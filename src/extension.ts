@@ -85,10 +85,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     getConfig: getAutoZoomConfig,
     resolveZoom,
     zoomApplier: statusAwareZoomApplier,
-    logger
+    logger,
+    isWindowFocused: () => vscode.window.state.focused
   });
 
-  if (initialConfig.enabled !== false) {
+  if (initialConfig.enabled !== false && vscode.window.state.focused) {
     try {
       const detection = await helperClient.getCurrentWindowDisplay();
       const display = toDisplayIdentity(detection);
@@ -161,10 +162,13 @@ function formatError(error: unknown): string {
 }
 
 function getBestEffortTitleHint(): string | undefined {
-  const editorName = vscode.window.activeTextEditor?.document.fileName;
-  if (editorName) {
-    return basename(editorName);
+  const workspaceName = vscode.workspace.name?.trim();
+  const editorPath = vscode.window.activeTextEditor?.document.fileName;
+  const fileBase = editorPath ? basename(editorPath) : undefined;
+
+  if (fileBase && workspaceName) {
+    return `${fileBase} — ${workspaceName}`;
   }
 
-  return vscode.workspace.name;
+  return fileBase ?? workspaceName;
 }

@@ -83,6 +83,13 @@ export class CommandZoomApplier implements WindowMonitorZoomApplier {
 
     const resetBaseline = configuration.get<number>('zoomLevel', 0);
     const appliedZoom = clampZoomLevel(target);
+
+    const previous = this.tracker.getLastApplication();
+    if (previous?.appliedZoom === appliedZoom) {
+      this.logger?.info(`Already at zoom ${appliedZoom}; skipping zoom command sequence.`);
+      return;
+    }
+
     const commandSequence = buildRelativeZoomCommandSequence(resetBaseline, appliedZoom);
 
     if (commandSequence === undefined) {

@@ -248,6 +248,32 @@ test('seeded startup display does not trigger an immediate re-apply', async () =
   assert.deepEqual(zoomApplier.appliedZooms, []);
 });
 
+test('ignores detections while the window is unfocused', async () => {
+  const helper = new SequenceHelper([createDetectorResult('display-a')]);
+  const zoomApplier = new RecordingZoomApplier();
+  const monitor = new WindowMonitor({
+    helperClient: helper,
+    getConfig: () => ({
+      ...baseConfig,
+      stabilityChecks: 1,
+      displayProfiles: {
+        'display-a': {
+          width: 3840,
+          height: 2160,
+          scaleFactor: 2,
+          zoom: 2
+        }
+      }
+    }),
+    resolveZoom: ({ config, display }) => config.displayProfiles[display.displayId ?? '']?.zoom ?? 0,
+    zoomApplier,
+    isWindowFocused: () => false
+  });
+
+  await monitor.pollOnce();
+  assert.deepEqual(zoomApplier.appliedZooms, []);
+});
+
 test('logs helper failure and keeps current zoom', async () => {
   const helper = new SequenceHelper([new Error('helper unavailable')]);
   const zoomApplier = new RecordingZoomApplier();

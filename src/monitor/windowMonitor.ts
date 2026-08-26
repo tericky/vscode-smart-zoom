@@ -28,6 +28,11 @@ export interface WindowMonitorOptions {
   zoomApplier: ZoomApplier;
   logger?: LoggerLike;
   scheduler?: PollScheduler;
+  /**
+   * When false, skip detection/apply. Multi-window hosts share one app PID, so the
+   * helper may report the focused sibling window's display while this host is blurred.
+   */
+  isWindowFocused?: () => boolean;
 }
 
 export interface DisplayStabilityState {
@@ -107,6 +112,7 @@ export class WindowMonitor {
   private readonly zoomApplier: ZoomApplier;
   private readonly logger?: LoggerLike;
   private readonly scheduler: PollScheduler;
+  private readonly isWindowFocused?: () => boolean;
   private stabilityState: DisplayStabilityState = { consecutiveCandidateCount: 0 };
   private intervalHandle: unknown;
   private polling = false;
@@ -125,6 +131,7 @@ export class WindowMonitor {
     this.zoomApplier = options.zoomApplier;
     this.logger = options.logger;
     this.scheduler = options.scheduler ?? defaultScheduler;
+    this.isWindowFocused = options.isWindowFocused;
   }
 
   public start(): void {
@@ -194,6 +201,10 @@ export class WindowMonitor {
       return;
     }
 
+    if (this.isWindowFocused && !this.isWindowFocused()) {
+      return;
+    }
+
     this.polling = true;
 
     try {
@@ -250,6 +261,12 @@ export class WindowMonitor {
   }
 
   private async handleDetection(detection: DetectorResult): Promise<void> {
+    if (this.isWindowFocused && !this.isWindowFocused()) {
+      // Do not update stability from another window's geometry.
+      this.pendingDetection = undefined;
+      return;
+    }
+
     if (this.applying) {
       this.pendingDetection = detection;
       return;

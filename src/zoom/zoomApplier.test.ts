@@ -89,6 +89,23 @@ test('updates tracker only after all zoom commands complete', async () => {
   assert.equal(tracker.getLastApplication(), undefined);
 });
 
+test('skips command sequence when tracker already matches target', async () => {
+  const vscodeApi = new FakeVscodeZoomApi({
+    zoomPerWindow: true,
+    zoomLevel: 0
+  });
+  const tracker = new ZoomTracker();
+  const logger = new RecordingLogger();
+  const applier = new CommandZoomApplier({ vscodeApi, tracker, logger });
+
+  await applier.applyZoomToCurrentWindow(2);
+  const commandsAfterFirst = vscodeApi.executedCommands.length;
+  await applier.applyZoomToCurrentWindow(2);
+
+  assert.equal(vscodeApi.executedCommands.length, commandsAfterFirst);
+  assert.match(logger.messages.join('\n'), /Already at zoom 2/);
+});
+
 test('coalesces burst applies to the latest target', async () => {
   const vscodeApi = new FakeVscodeZoomApi({
     zoomPerWindow: true,
