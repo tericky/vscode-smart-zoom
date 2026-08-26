@@ -28,6 +28,7 @@ constexpr std::string_view kOperation = "getCurrentWindowDisplay";
 struct Request {
     std::string operation;
     std::int64_t pid = 0;
+    std::string titleHint;
 };
 
 class RequestParser {
@@ -42,6 +43,7 @@ public:
 
         bool hasOperation = false;
         bool hasPid = false;
+        bool hasTitleHint = false;
         skipWhitespace();
         if (consume('}')) {
             return false;
@@ -68,6 +70,11 @@ public:
                     return false;
                 }
                 hasPid = true;
+            } else if (key == "titleHint") {
+                if (hasTitleHint || !parseString(request.titleHint)) {
+                    return false;
+                }
+                hasTitleHint = true;
             } else if (!skipValue(0)) {
                 return false;
             }
@@ -509,6 +516,64 @@ std::optional<unsigned long> cardinalProperty(
     return value;
 }
 
+std::string windowTitle(Display* display, Window window) {
+    const Atom titleAtom = XInternAtom(display, "_NET_WM_NAME", True);
+    if (titleAtom != None) {
+        Atom actualType = None;
+        int actualFormat = 0;
+        unsigned long itemCount = 0;
+        unsigned long bytesAfter = 0;
+        unsigned char* data = nullptr;
+        if (XGetWindowProperty(
+                display,
+                window,
+                titleAtom,
+                0,
+                1024 * 1024,
+                False,
+                AnyPropertyType,
+                &actualType,
+                &actualFormat,
+                &itemCount,
+                &bytesAfter,
+                &data) == Success &&
+            actualType != None && actualFormat == 8 && data != nullptr) {
+            std::string result(
+                reinterpret_cast<const char*>(data),
+                static_cast<std::size_t>(itemCount));
+            XFree(data);
+            return result;
+        }
+        if (data != nullptr) {
+            XFree(data);
+        }
+    }
+
+    char* legacyTitle = nullptr;
+    if (XFetchName(display, window, &legacyTitle) && legacyTitle != nullptr) {
+        std::string result(legacyTitle);
+        XFree(legacyTitle);
+        return result;
+    }
+    return {};
+}
+
+bool caseInsensitiveContains(std::string_view value, std::string_view needle) {
+    if (needle.empty() || needle.size() > value.size()) {
+        return false;
+    }
+    const auto equalIgnoringCase = [](char lhs, char rhs) {
+        return std::tolower(static_cast<unsigned char>(lhs)) ==
+            std::tolower(static_cast<unsigned char>(rhs));
+    };
+    return std::search(
+               value.begin(),
+               value.end(),
+               needle.begin(),
+               needle.end(),
+               equalIgnoringCase) != value.end();
+}
+
 std::vector<Window> windowList(Display* display, Window root) {
     const Atom stacking = XInternAtom(display, "_NET_CLIENT_LIST_STACKING", True);
     if (stacking != None) {
@@ -611,6 +676,7 @@ struct WindowCandidate {
     std::int64_t pid = 0;
     Bounds bounds;
     std::size_t zOrder = 0;
+    std::string title;
 };
 
 std::optional<WindowCandidate> windowCandidate(
@@ -650,13 +716,15 @@ std::optional<WindowCandidate> windowCandidate(
         window,
         static_cast<std::int64_t>(*pid),
         Bounds{rootX, rootY, attributes.width, attributes.height},
-        zOrder};
+        zOrder,
+        windowTitle(display, window)};
 }
 
 bool findWindow(
     Display* display,
     Window root,
     std::int64_t requestedPid,
+    std::string_view titleHint,
     WindowCandidate& result) {
     const std::vector<std::int64_t> family = processFamily(requestedPid);
     if (family.empty()) {
@@ -670,7 +738,7 @@ bool findWindow(
     const Window foreground = activeWindow(display, root);
 
     bool found = false;
-    std::tuple<int, std::size_t, std::size_t> bestRank;
+    std::tuple<int, int, std::size_t, std::size_t> bestRank;
     const std::vector<Window> windows = windowList(display, root);
     for (std::size_t index = 0; index < windows.size(); ++index) {
         const auto candidate =
@@ -685,6 +753,7 @@ bool findWindow(
         }
 
         const auto rank = std::make_tuple(
+            caseInsensitiveContains(candidate->title, titleHint) ? 0 : 1,
             candidate->handle == foreground ? 0 : 1,
             static_cast<std::size_t>(std::distance(family.begin(), familyPosition)),
             candidate->zOrder);
@@ -1001,7 +1070,7 @@ int main() {
     const Window root = DefaultRootWindow(display);
 
     WindowCandidate window;
-    if (!findWindow(display, root, request.pid, window)) {
+    if (!findWindow(display, root, request.pid, request.titleHint, window)) {
         XCloseDisplay(display);
         writeError("window_not_found");
         return EXIT_SUCCESS;

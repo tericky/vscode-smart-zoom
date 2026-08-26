@@ -4,10 +4,13 @@ import XCTest
 
 final class HelperCoreTests: XCTestCase {
     func testDecodeAcceptsSupportedRequest() throws {
-        let request = try decodeRequest(Data(#"{"op":"getCurrentWindowDisplay","pid":12345}"#.utf8))
+        let request = try decodeRequest(
+            Data(#"{"op":"getCurrentWindowDisplay","pid":12345,"titleHint":"README.md"}"#.utf8)
+        )
 
         XCTAssertEqual(request.op, "getCurrentWindowDisplay")
         XCTAssertEqual(request.pid, 12345)
+        XCTAssertEqual(request.titleHint, "README.md")
     }
 
     func testDecodeRejectsUnsupportedOperation() {
@@ -66,6 +69,30 @@ final class HelperCoreTests: XCTestCase {
         )
 
         XCTAssertEqual(selected?.bounds, front.bounds)
+    }
+
+    func testSelectWindowPrefersCaseInsensitiveTitleMatchOverFrontmost() {
+        let matching = WindowCandidate(
+            ownerPID: 100,
+            bounds: CGRect(x: 0, y: 0, width: 1200, height: 800),
+            listOrder: 1,
+            title: "README.md — vscode-smart-zoom"
+        )
+        let frontmost = WindowCandidate(
+            ownerPID: 200,
+            bounds: CGRect(x: 1500, y: 100, width: 900, height: 700),
+            listOrder: 0,
+            title: "extension.ts — vscode-smart-zoom"
+        )
+
+        let selected = selectWindow(
+            from: [matching, frontmost],
+            eligiblePIDs: [100, 200],
+            frontmostPID: 200,
+            titleHint: "readme.MD"
+        )
+
+        XCTAssertEqual(selected?.ownerPID, 100)
     }
 
     func testDisplayContainingWindowCenterReturnsMatchingDisplay() {

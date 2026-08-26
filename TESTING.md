@@ -15,6 +15,18 @@ printf '%s\n' '{"op":"getCurrentWindowDisplay","pid":'"$$"'}' | ./native/darwin/
 
 Expect one JSON line with `"ok": true` (or a stable `"ok": false` error string).
 
+## VSIX packaging prerequisite
+
+Before packaging a VSIX, build and verify the Windows and Linux helpers on
+their native hosts. The packaged paths must contain real target-platform
+binaries:
+
+- Windows: `native/win32/smart-zoom-helper.exe`
+- Linux: `native/linux/smart-zoom-helper`
+
+Do not add placeholder or cross-platform substitute binaries when either build
+is unavailable.
+
 ## Product decisions affecting acceptance
 
 - **Integer Zoom MVP:** Auto Zoom applies integer zoom levels only (`0`, `1`, `2`, …). Exact fractional per-window zoom is deferred (public VS Code APIs round relative zoom commands).

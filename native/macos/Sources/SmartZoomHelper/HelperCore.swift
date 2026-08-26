@@ -4,6 +4,7 @@ import Foundation
 struct HelperRequest: Decodable {
     let op: String
     let pid: Int32
+    let titleHint: String?
 }
 
 enum HelperError: String, Error {
@@ -19,6 +20,14 @@ struct WindowCandidate {
     let ownerPID: Int32
     let bounds: CGRect
     let listOrder: Int
+    let title: String?
+
+    init(ownerPID: Int32, bounds: CGRect, listOrder: Int, title: String? = nil) {
+        self.ownerPID = ownerPID
+        self.bounds = bounds
+        self.listOrder = listOrder
+        self.title = title
+    }
 }
 
 struct DisplayCandidate {
@@ -48,7 +57,8 @@ func decodeRequest(_ data: Data) throws -> HelperRequest {
 func selectWindow(
     from windows: [WindowCandidate],
     eligiblePIDs: [Int32],
-    frontmostPID: Int32?
+    frontmostPID: Int32?,
+    titleHint: String? = nil
 ) -> WindowCandidate? {
     let pidRanks = Dictionary(
         uniqueKeysWithValues: eligiblePIDs.enumerated().map { ($0.element, $0.offset) }
@@ -58,8 +68,19 @@ func selectWindow(
             $0.bounds.width >= 100 &&
             $0.bounds.height >= 100
     }
+    let normalizedTitleHint = titleHint?.trimmingCharacters(in: .whitespacesAndNewlines)
 
     return eligibleWindows.min { lhs, rhs in
+        let lhsMatchesTitle = normalizedTitleHint.map {
+            !$0.isEmpty && (lhs.title?.localizedCaseInsensitiveContains($0) ?? false)
+        } ?? false
+        let rhsMatchesTitle = normalizedTitleHint.map {
+            !$0.isEmpty && (rhs.title?.localizedCaseInsensitiveContains($0) ?? false)
+        } ?? false
+        if lhsMatchesTitle != rhsMatchesTitle {
+            return lhsMatchesTitle
+        }
+
         let lhsIsFrontmost = lhs.ownerPID == frontmostPID
         let rhsIsFrontmost = rhs.ownerPID == frontmostPID
         if lhsIsFrontmost != rhsIsFrontmost {

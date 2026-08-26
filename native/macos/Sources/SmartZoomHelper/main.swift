@@ -89,7 +89,7 @@ private func windowCandidates() -> [WindowCandidate] {
         return []
     }
 
-    return windowInfo.enumerated().compactMap { listOrder, info in
+    return windowInfo.enumerated().compactMap { listOrder, info -> WindowCandidate? in
         guard
             let ownerPID = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
             let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue,
@@ -104,7 +104,12 @@ private func windowCandidates() -> [WindowCandidate] {
             return nil
         }
 
-        return WindowCandidate(ownerPID: ownerPID, bounds: bounds, listOrder: listOrder)
+        return WindowCandidate(
+            ownerPID: ownerPID,
+            bounds: bounds,
+            listOrder: listOrder,
+            title: info[kCGWindowName as String] as? String
+        )
     }
 }
 
@@ -148,7 +153,8 @@ private func resolve(_ request: HelperRequest) throws -> SuccessResponse {
     guard let window = selectWindow(
         from: windowCandidates(),
         eligiblePIDs: family,
-        frontmostPID: frontmostPID
+        frontmostPID: frontmostPID,
+        titleHint: request.titleHint
     ) else {
         throw HelperError.windowNotFound
     }

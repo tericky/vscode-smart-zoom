@@ -15,13 +15,15 @@ Helpers are resolved relative to the extension root:
 ## Request
 
 ```json
-{ "op": "getCurrentWindowDisplay", "pid": 12345 }
+{ "op": "getCurrentWindowDisplay", "pid": 12345, "titleHint": "README.md" }
 ```
 
 Fields:
 
 - `op`: currently only `getCurrentWindowDisplay`.
 - `pid`: process id of the requesting VS Code extension host.
+- `titleHint` (optional): best-effort active editor or workspace text expected
+  in the VS Code window title. Matching is case-insensitive.
 
 ## Success Response
 
@@ -44,7 +46,18 @@ Fields:
 ```
 
 The helper must identify the VS Code window for the requesting process and
-return the display containing that window's center point.
+return the display containing that window's center point. Among eligible
+windows in the PID's parent process family, a case-insensitive title match is
+preferred. The frontmost or highest Z-order eligible window remains the
+fallback when the hint is absent or does not match.
+
+## Packaging Requirement
+
+Before packaging a VSIX, build and verify the native helper on every target
+platform. In particular, the Windows helper must exist at
+`native/win32/smart-zoom-helper.exe` and the Linux helper at
+`native/linux/smart-zoom-helper`. Do not package placeholders or binaries built
+for a different operating system.
 
 ## Error Response
 

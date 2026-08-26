@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { basename } from 'node:path';
 
 import { registerCommands, toDisplayIdentity } from './commands/registerCommands';
 import { getAutoZoomConfig } from './config/configStore';
@@ -28,7 +29,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   }
 
-  const helperClient = new JsonLineHelperClient(getHelperPath(context));
+  const helperClient = new JsonLineHelperClient(getHelperPath(context), {
+    getTitleHint: getBestEffortTitleHint
+  });
   const commandZoomApplier = new CommandZoomApplier({ logger });
   let statusBar: AutoZoomStatusBar | undefined;
   let initialStatus: AutoZoomStatus | undefined;
@@ -51,11 +54,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   const statusAwareZoomApplier = {
-    applyZoomToCurrentWindow: async (target: number): Promise<void> => {
+    applyZoomToCurrentWindow: async (
+      target: number,
+      display?: ReturnType<typeof toDisplayIdentity>
+    ): Promise<void> => {
       await commandZoomApplier.applyZoomToCurrentWindow(target);
       const appliedZoom = commandZoomApplier.tracker.getLastApplication()?.appliedZoom
         ?? Math.round(target);
-      statusBar?.updateZoom(appliedZoom);
+      if (display) {
+        statusBar?.update({ display, zoom: appliedZoom });
+      } else {
+        statusBar?.updateZoom(appliedZoom);
+      }
     }
   };
 
@@ -67,17 +77,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     logger
   });
 
-  try {
-    const detection = await helperClient.getCurrentWindowDisplay();
-    const display = toDisplayIdentity(detection);
-    const targetZoom = resolveZoom({ display, config: initialConfig });
-    await statusAwareZoomApplier.applyZoomToCurrentWindow(targetZoom);
-    initialStatus = {
-      display,
-      zoom: commandZoomApplier.tracker.getLastApplication()?.appliedZoom ?? Math.round(targetZoom)
-    };
-  } catch (error) {
-    await handleError(error);
+  if (initialConfig.enabled !== false) {
+    try {
+      const detection = await helperClient.getCurrentWindowDisplay();
+      const display = toDisplayIdentity(detection);
+      const targetZoom = resolveZoom({ display, config: initialConfig });
+      await statusAwareZoomApplier.applyZoomToCurrentWindow(targetZoom, display);
+      monitor.seedCurrentDisplay(detection.display.id);
+      initialStatus = {
+        display,
+        zoom: commandZoomApplier.tracker.getLastApplication()?.appliedZoom ?? Math.round(targetZoom)
+      };
+    } catch (error) {
+      await handleError(error);
+    }
   }
 
   monitor.start();
@@ -129,4 +142,13 @@ export function deactivate(): void {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function getBestEffortTitleHint(): string | undefined {
+  const editorName = vscode.window.activeTextEditor?.document.fileName;
+  if (editorName) {
+    return basename(editorName);
+  }
+
+  return vscode.workspace.name;
 }

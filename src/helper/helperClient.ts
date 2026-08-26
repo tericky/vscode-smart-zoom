@@ -10,6 +10,7 @@ export interface HelperClientOptions {
   pid?: number;
   timeoutMs?: number;
   spawnProcess?: SpawnProcess;
+  getTitleHint?: () => string | undefined;
 }
 
 export type HelperErrorCode =
@@ -28,6 +29,7 @@ export type SpawnProcess = (
 interface HelperRequest {
   op: 'getCurrentWindowDisplay';
   pid: number;
+  titleHint?: string;
 }
 
 type HelperResponse =
@@ -91,16 +93,23 @@ export class JsonLineHelperClient implements HelperClient {
   private readonly pid: number;
   private readonly timeoutMs: number;
   private readonly spawnProcess: SpawnProcess;
+  private readonly getTitleHint?: () => string | undefined;
 
   public constructor(helperPath: string, options: HelperClientOptions = {}) {
     this.helperPath = helperPath;
     this.pid = options.pid ?? process.pid;
     this.timeoutMs = normalizeTimeout(options.timeoutMs ?? defaultTimeoutMs);
     this.spawnProcess = options.spawnProcess ?? spawn;
+    this.getTitleHint = options.getTitleHint;
   }
 
   public getCurrentWindowDisplay(): Promise<DetectorResult> {
-    return this.callHelper({ op: 'getCurrentWindowDisplay', pid: this.pid });
+    const titleHint = this.getTitleHint?.()?.trim();
+    return this.callHelper({
+      op: 'getCurrentWindowDisplay',
+      pid: this.pid,
+      ...(titleHint ? { titleHint } : {})
+    });
   }
 
   private callHelper(request: HelperRequest): Promise<DetectorResult> {

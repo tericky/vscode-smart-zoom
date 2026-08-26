@@ -21,6 +21,7 @@ constexpr std::string_view kOperation = "getCurrentWindowDisplay";
 struct Request {
     std::string operation;
     std::int64_t pid = 0;
+    std::string titleHint;
 };
 
 class RequestParser {
@@ -35,6 +36,7 @@ public:
 
         bool hasOperation = false;
         bool hasPid = false;
+        bool hasTitleHint = false;
         skipWhitespace();
         if (consume('}')) {
             return false;
@@ -61,6 +63,11 @@ public:
                     return false;
                 }
                 hasPid = true;
+            } else if (key == "titleHint") {
+                if (hasTitleHint || !parseString(request.titleHint)) {
+                    return false;
+                }
+                hasTitleHint = true;
             } else if (!skipValue(0)) {
                 return false;
             }
@@ -452,6 +459,51 @@ std::string wideToUtf8(std::wstring_view value) {
     return result;
 }
 
+std::wstring utf8ToWide(std::string_view value) {
+    if (value.empty()) {
+        return {};
+    }
+    const int size = MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        value.data(),
+        static_cast<int>(value.size()),
+        nullptr,
+        0);
+    if (size <= 0) {
+        return {};
+    }
+
+    std::wstring result(static_cast<std::size_t>(size), L'\0');
+    if (MultiByteToWideChar(
+            CP_UTF8,
+            MB_ERR_INVALID_CHARS,
+            value.data(),
+            static_cast<int>(value.size()),
+            result.data(),
+            size) != size) {
+        return {};
+    }
+    return result;
+}
+
+bool caseInsensitiveContains(std::wstring_view value, std::wstring_view needle) {
+    if (needle.empty() || needle.size() > value.size()) {
+        return false;
+    }
+    for (std::size_t offset = 0; offset + needle.size() <= value.size(); ++offset) {
+        if (CompareStringOrdinal(
+                value.data() + offset,
+                static_cast<int>(needle.size()),
+                needle.data(),
+                static_cast<int>(needle.size()),
+                TRUE) == CSTR_EQUAL) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void writeError(std::string_view error) {
     std::cout << "{\"ok\":false,\"error\":\"" << jsonEscape(error) << "\"}\n";
 }
@@ -509,6 +561,7 @@ struct WindowCandidate {
     DWORD pid = 0;
     RECT bounds{};
     std::size_t zOrder = 0;
+    std::wstring title;
 };
 
 struct WindowEnumeration {
@@ -531,13 +584,28 @@ BOOL CALLBACK collectWindow(HWND window, LPARAM parameter) {
     DWORD pid = 0;
     GetWindowThreadProcessId(window, &pid);
     if (pid != 0) {
+        const int titleLength = GetWindowTextLengthW(window);
+        std::wstring title;
+        if (titleLength > 0) {
+            title.resize(static_cast<std::size_t>(titleLength) + 1);
+            const int copied = GetWindowTextW(window, title.data(), titleLength + 1);
+            title.resize(copied > 0 ? static_cast<std::size_t>(copied) : 0);
+        }
         enumeration.windows.push_back(
-            WindowCandidate{window, pid, bounds, enumeration.windows.size()});
+            WindowCandidate{
+                window,
+                pid,
+                bounds,
+                enumeration.windows.size(),
+                std::move(title)});
     }
     return TRUE;
 }
 
-bool findWindow(DWORD requestedPid, WindowCandidate& result) {
+bool findWindow(
+    DWORD requestedPid,
+    std::wstring_view titleHint,
+    WindowCandidate& result) {
     const std::vector<DWORD> family = processFamily(requestedPid);
     if (family.empty()) {
         return false;
@@ -554,6 +622,7 @@ bool findWindow(DWORD requestedPid, WindowCandidate& result) {
     }
 
     bool found = false;
+    std::size_t bestTitleRank = 1;
     std::size_t bestForegroundRank = 1;
     std::size_t bestPidRank = std::numeric_limits<std::size_t>::max();
     std::size_t bestZOrder = std::numeric_limits<std::size_t>::max();
@@ -564,14 +633,21 @@ bool findWindow(DWORD requestedPid, WindowCandidate& result) {
             continue;
         }
 
+        const std::size_t titleRank =
+            caseInsensitiveContains(candidate.title, titleHint) ? 0 : 1;
         const std::size_t foregroundRank =
             candidate.handle == foreground ? 0 : 1;
         const std::size_t pidRank =
             static_cast<std::size_t>(std::distance(family.begin(), pidPosition));
         if (!found ||
-            std::tie(foregroundRank, pidRank, candidate.zOrder) <
-                std::tie(bestForegroundRank, bestPidRank, bestZOrder)) {
+            std::tie(titleRank, foregroundRank, pidRank, candidate.zOrder) <
+                std::tie(
+                    bestTitleRank,
+                    bestForegroundRank,
+                    bestPidRank,
+                    bestZOrder)) {
             result = candidate;
+            bestTitleRank = titleRank;
             bestForegroundRank = foregroundRank;
             bestPidRank = pidRank;
             bestZOrder = candidate.zOrder;
@@ -726,7 +802,10 @@ int main() {
     }
 
     WindowCandidate window;
-    if (!findWindow(static_cast<DWORD>(request.pid), window)) {
+    if (!findWindow(
+            static_cast<DWORD>(request.pid),
+            utf8ToWide(request.titleHint),
+            window)) {
         writeError("window_not_found");
         return 0;
     }

@@ -36,10 +36,11 @@ printf '{"op":"getCurrentWindowDisplay","pid":%d}\n' "$$" \
   | native/darwin/smart-zoom-helper
 ```
 
-The helper walks from the supplied process to its parent application process,
-selects the frontmost eligible top-level window, and maps the window center to
-an active Core Graphics display. Display IDs are Core Graphics display UUIDs,
-not transient display indexes.
+The helper walks from the supplied process to its parent application process
+and selects an eligible top-level window. A case-insensitive `titleHint` match
+is preferred, with the frontmost window as fallback. The window center is
+mapped to an active Core Graphics display. Display IDs are Core Graphics
+display UUIDs, not transient display indexes.
 
 Depending on the macOS privacy configuration, the host editor may need Screen
 Recording permission to inspect window metadata.

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { AutoZoomConfig } from '../config/types';
-import type { DetectorResult } from '../display/types';
+import type { DetectorResult, DisplayIdentity } from '../display/types';
 import {
   shouldApplyDisplayChange,
   WindowMonitor,
@@ -103,6 +103,27 @@ test('applies resolved zoom after stable display detection only once for unchang
   await monitor.pollOnce();
 
   assert.deepEqual(zoomApplier.appliedZooms, [2]);
+  assert.equal(zoomApplier.appliedDisplays[0]?.displayId, 'display-a');
+});
+
+test('seeded startup display does not trigger an immediate re-apply', async () => {
+  const helper = new SequenceHelper([
+    createDetectorResult('display-a'),
+    createDetectorResult('display-a')
+  ]);
+  const zoomApplier = new RecordingZoomApplier();
+  const monitor = new WindowMonitor({
+    helperClient: helper,
+    getConfig: () => ({ ...baseConfig, stabilityChecks: 2 }),
+    resolveZoom: () => 2,
+    zoomApplier
+  });
+
+  monitor.seedCurrentDisplay('display-a');
+  await monitor.pollOnce();
+  await monitor.pollOnce();
+
+  assert.deepEqual(zoomApplier.appliedZooms, []);
 });
 
 test('logs helper failure and keeps current zoom', async () => {
@@ -163,9 +184,14 @@ class SequenceHelper {
 
 class RecordingZoomApplier {
   public readonly appliedZooms: number[] = [];
+  public readonly appliedDisplays: Array<DisplayIdentity | undefined> = [];
 
-  public async applyZoomToCurrentWindow(target: number): Promise<void> {
+  public async applyZoomToCurrentWindow(
+    target: number,
+    display?: DisplayIdentity
+  ): Promise<void> {
     this.appliedZooms.push(target);
+    this.appliedDisplays.push(display);
   }
 }
 

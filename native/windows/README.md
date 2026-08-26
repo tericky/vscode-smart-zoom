@@ -39,8 +39,9 @@ No executable is checked in until it has been produced and verified on Windows.
 
 The helper enables per-monitor DPI awareness before reading window geometry. It
 walks the supplied extension-host PID's parent process chain, enumerates
-top-level windows in Z order, and prefers the foreground eligible window. The
-window center is mapped with `MonitorFromPoint`.
+top-level windows in Z order, and prefers a case-insensitive `titleHint` match.
+The foreground eligible window is the fallback. The window center is mapped
+with `MonitorFromPoint`.
 
 Display scale is the effective monitor DPI divided by 96. The display identity
 comes from the monitor's Plug and Play device interface returned by

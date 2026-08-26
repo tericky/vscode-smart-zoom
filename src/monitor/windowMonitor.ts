@@ -4,7 +4,7 @@ import type { ResolveZoomInput } from '../display/zoomResolver';
 import type { HelperClient } from '../helper/helperClient';
 
 export interface ZoomApplier {
-  applyZoomToCurrentWindow(target: number): Promise<void>;
+  applyZoomToCurrentWindow(target: number, display?: DisplayIdentity): Promise<void>;
 }
 
 export interface LoggerLike {
@@ -130,6 +130,13 @@ export class WindowMonitor {
     this.intervalHandle = undefined;
   }
 
+  public seedCurrentDisplay(displayId: string): void {
+    this.stabilityState = {
+      currentDisplayId: displayId,
+      consecutiveCandidateCount: 0
+    };
+  }
+
   public async pollOnce(): Promise<void> {
     if (this.polling) {
       return;
@@ -157,7 +164,7 @@ export class WindowMonitor {
 
       const display = toDisplayIdentity(detection);
       const targetZoom = this.resolveZoom({ display, config });
-      await this.zoomApplier.applyZoomToCurrentWindow(targetZoom);
+      await this.zoomApplier.applyZoomToCurrentWindow(targetZoom, display);
       this.stabilityState = decision.nextState;
     } catch (error) {
       this.logger?.info(`Window monitor skipped zoom update: ${formatError(error)}`);

@@ -50,8 +50,8 @@ binary is checked in; produce the packaged binary on Linux.
 The helper reads the supplied extension-host PID's parent chain from `/proc`.
 It obtains top-level windows from the EWMH `_NET_CLIENT_LIST_STACKING`
 property, with `XQueryTree` as a fallback, and matches them by `_NET_WM_PID`.
-The active eligible window is preferred, followed by process proximity and
-stacking order.
+A case-insensitive `titleHint` match is preferred. The active eligible window,
+process proximity, and stacking order provide the fallback ranking.
 
 Monitor geometry is obtained from XRandR 1.5. The window center determines the
 selected monitor. When XRandR monitor discovery is unavailable, the helper
