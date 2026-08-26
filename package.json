@@ -1,6 +1,6 @@
 {
   "name": "vscode-smart-zoom",
-  "displayName": "Smart Auto Zoom",
+  "displayName": "Smart Zoom",
   "description": "Automatically apply per-window zoom based on the current display",
   "version": "0.0.1",
   "publisher": "tericky",
@@ -24,7 +24,7 @@
   },
   "contributes": {
     "configuration": {
-      "title": "Auto Zoom",
+      "title": "Smart Zoom",
       "properties": {
         "autoZoom.enabled": {
           "type": "boolean",
@@ -57,35 +57,39 @@
     "commands": [
       {
         "command": "autoZoom.enable",
-        "title": "Auto Zoom: Enable"
+        "title": "Smart Zoom: Enable"
       },
       {
         "command": "autoZoom.disable",
-        "title": "Auto Zoom: Disable"
+        "title": "Smart Zoom: Disable"
       },
       {
         "command": "autoZoom.detectCurrentDisplay",
-        "title": "Auto Zoom: Detect Current Display"
+        "title": "Smart Zoom: Detect Current Display"
       },
       {
         "command": "autoZoom.configureCurrentDisplay",
-        "title": "Auto Zoom: Configure Current Display"
+        "title": "Smart Zoom: Configure Current Display"
       },
       {
         "command": "autoZoom.showStatus",
-        "title": "Auto Zoom: Show Status"
+        "title": "Smart Zoom: Show Status"
       },
       {
         "command": "autoZoom.statusMenu",
-        "title": "Auto Zoom: Status Menu"
+        "title": "Smart Zoom: Status Menu"
       },
       {
         "command": "autoZoom.zoomInCurrentDisplay",
-        "title": "Auto Zoom: Zoom In Current Display"
+        "title": "Smart Zoom: Zoom In Current Display"
       },
       {
         "command": "autoZoom.zoomOutCurrentDisplay",
-        "title": "Auto Zoom: Zoom Out Current Display"
+        "title": "Smart Zoom: Zoom Out Current Display"
+      },
+      {
+        "command": "autoZoom.clearAllSettings",
+        "title": "Smart Zoom: Clear All Learned Settings"
       }
     ]
   },

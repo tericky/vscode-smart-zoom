@@ -4,7 +4,7 @@ export class Logger implements vscode.Disposable {
   private readonly output: vscode.OutputChannel;
 
   constructor() {
-    this.output = vscode.window.createOutputChannel('Auto Zoom');
+    this.output = vscode.window.createOutputChannel('Smart Zoom');
   }
 
   info(message: string): void {

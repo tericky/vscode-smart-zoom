@@ -1,12 +1,19 @@
 import * as vscode from 'vscode';
 
-import { saveDisplayConfiguration } from '../config/configStore';
+import { clearLearnedConfiguration, saveDisplayConfiguration } from '../config/configStore';
 import type { AutoZoomConfig } from '../config/types';
 import type { DisplayIdentity, DetectorResult } from '../display/types';
 import { resolveZoom } from '../display/zoomResolver';
 import type { HelperClient } from '../helper/helperClient';
 import type { ZoomApplier } from '../monitor/windowMonitor';
 import { AutoZoomStatusBar, formatStatusMessage } from '../ui/statusBar';
+import { showStatusMenu } from '../ui/statusMenu';
+import {
+  clampZoomLevel,
+  formatZoomLevelOption,
+  MAX_ZOOM_LEVEL,
+  MIN_ZOOM_LEVEL
+} from '../ui/statusMenuItems';
 import {
   formatZoomPercent,
   parseZoomInput,
@@ -30,20 +37,6 @@ export interface RegisterCommandsOptions {
 
 type CommandHandler = () => void | Thenable<void>;
 
-type StatusMenuAction =
-  | { kind: 'zoomDelta'; delta: number }
-  | { kind: 'setZoom'; zoom: number }
-  | { kind: 'customZoom' }
-  | { kind: 'showStatus' }
-  | { kind: 'detect' }
-  | { kind: 'toggleEnabled' };
-
-interface StatusMenuItem extends vscode.QuickPickItem {
-  action: StatusMenuAction;
-}
-
-const presetZooms = [-2, -1, 0, 1, 2, 3, 4];
-
 export function registerCommands(options: RegisterCommandsOptions): void {
   const {
     context,
@@ -56,7 +49,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
   } = options;
 
   const applySavedZoom = async (display: DisplayIdentity, zoom: number): Promise<void> => {
-    const normalized = Math.round(zoom);
+    const normalized = clampZoomLevel(zoom);
     await saveDisplayConfiguration(display, normalized);
     await zoomApplier.applyZoomToCurrentWindow(normalized);
     statusBar.update({ display, zoom: normalized });
@@ -65,17 +58,26 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     );
   };
 
+  const applyZoomWithoutLearning = async (
+    display: DisplayIdentity,
+    zoom: number
+  ): Promise<void> => {
+    const normalized = clampZoomLevel(zoom);
+    await zoomApplier.applyZoomToCurrentWindow(normalized);
+    statusBar.update({ display, zoom: normalized });
+  };
+
   const resolveCurrentDisplayZoom = async (): Promise<{ display: DisplayIdentity; zoom: number }> => {
     const display = toDisplayIdentity(await helperClient.getCurrentWindowDisplay());
-    const zoom = Math.round(resolveZoom({ display, config: getConfig() }));
+    const zoom = clampZoomLevel(resolveZoom({ display, config: getConfig() }));
     return { display, zoom };
   };
 
   registerCommand(context, 'autoZoom.enable', async () => {
     try {
       await setEnabled(true);
-      logger.info('Auto Zoom enabled.');
-      await vscode.window.showInformationMessage('Auto Zoom is enabled.');
+      logger.info('Smart Zoom enabled.');
+      await vscode.window.showInformationMessage('Smart Zoom is enabled.');
     } catch (error) {
       await onError(error);
     }
@@ -84,8 +86,8 @@ export function registerCommands(options: RegisterCommandsOptions): void {
   registerCommand(context, 'autoZoom.disable', async () => {
     try {
       await setEnabled(false);
-      logger.info('Auto Zoom disabled.');
-      await vscode.window.showInformationMessage('Auto Zoom is disabled.');
+      logger.info('Smart Zoom disabled.');
+      await vscode.window.showInformationMessage('Smart Zoom is disabled.');
     } catch (error) {
       await onError(error);
     }
@@ -154,37 +156,76 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     await statusBar.showStatus();
   });
 
+  const clearAllLearnedSettings = async (
+    display?: DisplayIdentity
+  ): Promise<void> => {
+    const confirmed = await vscode.window.showWarningMessage(
+      'Clear all learned Smart Zoom settings? This removes saved display profiles and zoom rules, then applies Zoom Level 0 (100%) to the current window without re-saving a profile.',
+      { modal: true },
+      'Clear'
+    );
+    if (confirmed !== 'Clear') {
+      return;
+    }
+
+    await clearLearnedConfiguration();
+    logger.info('Cleared all learned Smart Zoom display profiles and zoom rules.');
+
+    if (display) {
+      await applyZoomWithoutLearning(display, 0);
+    }
+
+    await vscode.window.showInformationMessage(
+      'Cleared learned settings and applied Zoom Level 0 : 100 % to this window.'
+    );
+  };
+
+  registerCommand(context, 'autoZoom.clearAllSettings', async () => {
+    try {
+      let display: DisplayIdentity | undefined;
+      try {
+        display = toDisplayIdentity(await helperClient.getCurrentWindowDisplay());
+      } catch {
+        display = undefined;
+      }
+      await clearAllLearnedSettings(display);
+    } catch (error) {
+      await onError(error);
+    }
+  });
+
   registerCommand(context, 'autoZoom.statusMenu', async () => {
     try {
       const { display, zoom } = await resolveCurrentDisplayZoom();
       statusBar.update({ display, zoom });
 
       const enabled = getConfig().enabled !== false;
-      const picked = await vscode.window.showQuickPick<StatusMenuItem>(
-        buildStatusMenuItems({ display, zoom, enabled }),
-        {
-          title: 'Auto Zoom',
-          placeHolder: 'Choose a zoom size for this display',
-          matchOnDescription: true,
-          matchOnDetail: true
-        }
-      );
-
-      if (!picked) {
+      const picked = await showStatusMenu({ display, zoom, enabled });
+      if (!picked?.action) {
         return;
       }
 
       switch (picked.action.kind) {
-        case 'zoomDelta':
-          await applySavedZoom(display, zoom + picked.action.delta);
+        case 'zoomDelta': {
+          const nextZoom = clampZoomLevel(zoom + picked.action.delta);
+          if (nextZoom === zoom) {
+            await vscode.window.showInformationMessage(
+              picked.action.delta > 0
+                ? `Already at max (${formatZoomLevelOption(MAX_ZOOM_LEVEL)}).`
+                : `Already at min (${formatZoomLevelOption(MIN_ZOOM_LEVEL)}).`
+            );
+            break;
+          }
+          await applySavedZoom(display, nextZoom);
           break;
+        }
         case 'setZoom':
           await applySavedZoom(display, picked.action.zoom);
           break;
         case 'customZoom': {
           const input = await vscode.window.showInputBox({
             title: 'Custom Zoom',
-            prompt: 'Enter zoom as a percent (for example 100 or 120%).',
+            prompt: `Enter zoom as a percent (for example 100 or 120%). Range: Zoom Level ${MIN_ZOOM_LEVEL}…${MAX_ZOOM_LEVEL}.`,
             value: String(zoomLevelToPercent(zoom)),
             placeHolder: '100',
             validateInput: validateZoomInput
@@ -207,10 +248,13 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         case 'detect':
           await vscode.commands.executeCommand('autoZoom.detectCurrentDisplay');
           break;
+        case 'clearLearned':
+          await clearAllLearnedSettings(display);
+          break;
         case 'toggleEnabled':
           await setEnabled(!enabled);
           await vscode.window.showInformationMessage(
-            `Auto Zoom is now ${!enabled ? 'enabled' : 'disabled'}.`
+            `Smart Zoom is now ${!enabled ? 'enabled' : 'disabled'}.`
           );
           break;
       }
@@ -218,62 +262,6 @@ export function registerCommands(options: RegisterCommandsOptions): void {
       await onError(error);
     }
   });
-}
-
-function buildStatusMenuItems(input: {
-  display: DisplayIdentity;
-  zoom: number;
-  enabled: boolean;
-}): StatusMenuItem[] {
-  const displayName = input.display.name ?? 'Unknown display';
-  const items: StatusMenuItem[] = [
-    {
-      label: '$(zoom-in) Larger',
-      description: `${formatZoomPercent(input.zoom)} → ${formatZoomPercent(input.zoom + 1)}`,
-      detail: `Save and apply for ${displayName}`,
-      action: { kind: 'zoomDelta', delta: 1 }
-    },
-    {
-      label: '$(zoom-out) Smaller',
-      description: `${formatZoomPercent(input.zoom)} → ${formatZoomPercent(input.zoom - 1)}`,
-      detail: `Save and apply for ${displayName}`,
-      action: { kind: 'zoomDelta', delta: -1 }
-    },
-    {
-      label: '$(edit) Custom size…',
-      description: `Current ${formatZoomPercent(input.zoom)}`,
-      action: { kind: 'customZoom' }
-    }
-  ];
-
-  for (const preset of presetZooms) {
-    const percent = formatZoomPercent(preset);
-    items.push({
-      label: preset === input.zoom ? `$(check) ${percent}` : percent,
-      description: preset === input.zoom ? 'Current size' : undefined,
-      detail: `Save and apply for ${displayName}`,
-      action: { kind: 'setZoom', zoom: preset }
-    });
-  }
-
-  items.push(
-    {
-      label: '$(info) Show details',
-      description: displayName,
-      action: { kind: 'showStatus' }
-    },
-    {
-      label: '$(search) Detect current display',
-      action: { kind: 'detect' }
-    },
-    {
-      label: input.enabled ? '$(circle-slash) Turn off Auto Zoom' : '$(play) Turn on Auto Zoom',
-      description: input.enabled ? 'Currently on' : 'Currently off',
-      action: { kind: 'toggleEnabled' }
-    }
-  );
-
-  return items;
 }
 
 function registerCommand(
@@ -291,8 +279,13 @@ async function setEnabled(enabled: boolean): Promise<void> {
 }
 
 function validateZoomInput(value: string): string | undefined {
-  if (parseZoomInput(value) === undefined) {
+  const zoom = parseZoomInput(value);
+  if (zoom === undefined) {
     return 'Enter a percent like 100 or 120%.';
+  }
+
+  if (zoom < MIN_ZOOM_LEVEL || zoom > MAX_ZOOM_LEVEL) {
+    return `Zoom must map to Zoom Level ${MIN_ZOOM_LEVEL}…${MAX_ZOOM_LEVEL}.`;
   }
 
   return undefined;

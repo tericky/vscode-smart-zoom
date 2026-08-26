@@ -24,9 +24,9 @@ export class AutoZoomStatusBar implements vscode.Disposable {
     this.onError = options.onError;
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     this.item.command = 'autoZoom.statusMenu';
-    this.item.name = 'Auto Zoom';
-    this.item.tooltip = 'Click to adjust zoom for the current display';
-    this.item.text = '$(zoom-in) —%';
+    this.item.name = 'Smart Zoom';
+    this.item.tooltip = 'Smart Zoom — click to choose zoom size for this display';
+    this.item.text = '$(zoom-in) Smart Zoom —%';
     this.item.show();
   }
 
@@ -49,7 +49,7 @@ export class AutoZoomStatusBar implements vscode.Disposable {
       return;
     }
 
-    this.item.text = `$(zoom-in) ${formatZoomPercent(zoom)}`;
+    this.item.text = `$(zoom-in) Smart Zoom ${formatZoomPercent(zoom)}`;
   }
 
   public async refresh(): Promise<AutoZoomStatus> {
@@ -84,15 +84,21 @@ export function formatStatusMessage(status: AutoZoomStatus): string {
 
 function formatStatusText(status: AutoZoomStatus): string {
   const displayLabel = shortDisplayName(status.display.name);
+  const zoom = formatZoomPercent(status.zoom);
   if (displayLabel) {
-    return `$(zoom-in) ${formatZoomPercent(status.zoom)} · ${displayLabel}`;
+    return `$(zoom-in) ${zoom} · ${displayLabel}`;
   }
 
-  return `$(zoom-in) ${formatZoomPercent(status.zoom)}`;
+  return `$(zoom-in) Smart Zoom ${zoom}`;
 }
 
 function formatStatusTooltip(status: AutoZoomStatus): string {
-  return `${formatStatusMessage(status)}\n\nClick to adjust zoom for this display.`;
+  return [
+    formatStatusMessage(status),
+    '',
+    'Click to open the zoom menu.',
+    'The current size is marked with ✓ in the list.'
+  ].join('\n');
 }
 
 function shortDisplayName(name: string | undefined): string | undefined {

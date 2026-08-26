@@ -26,7 +26,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   if (zoomPerWindow === false) {
     await vscode.window.showWarningMessage(
-      'Auto Zoom requires window.zoomPerWindow to be enabled. Zoom changes will not be applied.'
+      'Smart Zoom requires window.zoomPerWindow to be enabled. Zoom changes will not be applied.'
     );
   }
 
@@ -42,19 +42,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let waylandNoticeShown = false;
 
   const handleError = async (error: unknown): Promise<void> => {
-    logger.info(`Auto Zoom operation failed: ${formatError(error)}`);
+    logger.info(`Smart Zoom operation failed: ${formatError(error)}`);
 
     if (error instanceof NativeHelperError && error.nativeError === 'wayland_unsupported') {
       if (!waylandNoticeShown) {
         waylandNoticeShown = true;
         await vscode.window.showWarningMessage(
-          'Auto Zoom cannot detect the current display on Wayland. This platform limitation prevents automatic per-display zoom.'
+          'Smart Zoom cannot detect the current display on Wayland. This platform limitation prevents automatic per-display zoom.'
         );
       }
       return;
     }
 
-    await vscode.window.showErrorMessage(`Auto Zoom failed: ${formatError(error)}`);
+    await vscode.window.showErrorMessage(`Smart Zoom failed: ${formatError(error)}`);
   };
 
   const statusAwareZoomApplier = {
@@ -135,7 +135,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   activeMonitor = monitor;
   activeStatusBar = statusBar;
-  logger.info('Auto Zoom activated.');
+  logger.info('Smart Zoom activated.');
 }
 
 export function deactivate(): void {

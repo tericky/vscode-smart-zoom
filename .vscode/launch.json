@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Smart Auto Zoom Extension",
+      "name": "Run Smart Zoom Extension",
       "type": "extensionHost",
       "request": "launch",
       "args": [

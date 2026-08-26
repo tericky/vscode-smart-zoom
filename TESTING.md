@@ -29,7 +29,7 @@ is unavailable.
 
 ## Product decisions affecting acceptance
 
-- **Integer Zoom MVP:** Auto Zoom applies integer zoom levels only (`0`, `1`, `2`, …). Exact fractional per-window zoom is deferred (public VS Code APIs round relative zoom commands).
+- **Integer Zoom MVP:** Smart Zoom applies integer zoom levels only (`0`, `1`, `2`, …). Exact fractional per-window zoom is deferred (public VS Code APIs round relative zoom commands).
 - **Never** write `window.zoomLevel` as per-window state. Require `window.zoomPerWindow !== false`.
 - **docs/** is local-only (gitignored). Tracked sources and commit messages are English.
 
@@ -66,6 +66,6 @@ is unavailable.
 2. `npm run compile`
 3. Confirm `window.zoomPerWindow` is `true`.
 4. Press F5 to launch Extension Development Host.
-5. Run **Auto Zoom: Detect Current Display** and confirm status bar / message.
-6. Run **Auto Zoom: Configure Current Display**, set an integer zoom, move the window across displays, and confirm auto switch.
+5. Run **Smart Zoom: Detect Current Display** and confirm status bar / message.
+6. Run **Smart Zoom: Configure Current Display**, set an integer zoom, move the window across displays, and confirm auto switch.
 7. Open a second window and confirm the first window’s zoom does not change when configuring the second.

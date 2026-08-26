@@ -123,3 +123,15 @@ export async function saveDisplayConfiguration(
   await configuration.update('displayProfiles', nextConfig.displayProfiles, target);
   await configuration.update('zoomRules', nextConfig.zoomRules, target);
 }
+
+/**
+ * Clears learned per-display data only.
+ * Keeps enabled / pollInterval / stabilityChecks / defaultZoom.
+ */
+export async function clearLearnedConfiguration(): Promise<void> {
+  const configuration = getWorkspaceConfiguration();
+  const target = getConfigurationTarget();
+
+  await configuration.update('displayProfiles', {}, target);
+  await configuration.update('zoomRules', [], target);
+}
