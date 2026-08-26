@@ -104,4 +104,33 @@ final class HelperCoreTests: XCTestCase {
 
         XCTAssertEqual(displayContainingWindowCenter(window, displays: displays)?.id, 2)
     }
+
+    func testDisplayContainingWindowCenterFallsBackToNearestDisplay() {
+        let displays = [
+            DisplayCandidate(id: 1, bounds: CGRect(x: 0, y: 0, width: 1920, height: 1080)),
+            DisplayCandidate(id: 2, bounds: CGRect(x: 1920, y: 0, width: 2560, height: 1440))
+        ]
+        let window = CGRect(x: 5000, y: 100, width: 100, height: 100)
+
+        XCTAssertEqual(displayContainingWindowCenter(window, displays: displays)?.id, 2)
+    }
+
+    func testSelectWindowCanMatchEditorOwnerNameWhenPIDFamilyMisses() {
+        let cursorWindow = WindowCandidate(
+            ownerPID: 999,
+            bounds: CGRect(x: 0, y: 0, width: 1200, height: 800),
+            listOrder: 0,
+            title: "README.md",
+            ownerName: "Cursor"
+        )
+
+        let selected = selectWindow(
+            from: [cursorWindow],
+            eligiblePIDs: [100],
+            frontmostPID: 999,
+            titleHint: "README"
+        )
+
+        XCTAssertEqual(selected?.ownerPID, 999)
+    }
 }

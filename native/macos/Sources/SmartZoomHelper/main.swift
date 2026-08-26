@@ -108,7 +108,8 @@ private func windowCandidates() -> [WindowCandidate] {
             ownerPID: ownerPID,
             bounds: bounds,
             listOrder: listOrder,
-            title: info[kCGWindowName as String] as? String
+            title: info[kCGWindowName as String] as? String,
+            ownerName: info[kCGWindowOwnerName as String] as? String
         )
     }
 }
@@ -165,9 +166,7 @@ private func resolve(_ request: HelperRequest) throws -> SuccessResponse {
     ) else {
         throw HelperError.displayNotFound
     }
-    guard let displayID = persistentID(for: display.id) else {
-        throw HelperError.displayNotFound
-    }
+    let displayID = persistentID(for: display.id) ?? "cg-\(display.id)"
 
     let matchingScreen = screen(for: display.id)
     let displayResponse = DisplayResponse(
@@ -201,16 +200,23 @@ private func writeJSON<T: Encodable>(_ value: T) {
     FileHandle.standardOutput.write(Data([0x0A]))
 }
 
-guard let input = readLine() else {
+guard let firstInput = readLine() else {
     writeJSON(ErrorResponse(error: HelperError.invalidRequest.rawValue))
     exit(EXIT_SUCCESS)
 }
 
-do {
-    let request = try decodeRequest(Data(input.utf8))
-    writeJSON(try resolve(request))
-} catch let error as HelperError {
-    writeJSON(ErrorResponse(error: error.rawValue))
-} catch {
-    writeJSON(ErrorResponse(error: HelperError.internalError.rawValue))
+func handleLine(_ input: String) {
+    do {
+        let request = try decodeRequest(Data(input.utf8))
+        writeJSON(try resolve(request))
+    } catch let error as HelperError {
+        writeJSON(ErrorResponse(error: error.rawValue))
+    } catch {
+        writeJSON(ErrorResponse(error: HelperError.internalError.rawValue))
+    }
+}
+
+handleLine(firstInput)
+while let input = readLine() {
+    handleLine(input)
 }

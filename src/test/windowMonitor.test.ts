@@ -66,7 +66,7 @@ test('start uses default polling interval and stop clears the timer', () => {
   monitor.start();
   monitor.start();
   assert.equal(scheduler.intervals.length, 1);
-  assert.equal(scheduler.intervals[0].delayMs, 150);
+  assert.equal(scheduler.intervals[0].delayMs, 500);
 
   monitor.stop();
   monitor.stop();

@@ -21,12 +21,20 @@ struct WindowCandidate {
     let bounds: CGRect
     let listOrder: Int
     let title: String?
+    let ownerName: String?
 
-    init(ownerPID: Int32, bounds: CGRect, listOrder: Int, title: String? = nil) {
+    init(
+        ownerPID: Int32,
+        bounds: CGRect,
+        listOrder: Int,
+        title: String? = nil,
+        ownerName: String? = nil
+    ) {
         self.ownerPID = ownerPID
         self.bounds = bounds
         self.listOrder = listOrder
         self.title = title
+        self.ownerName = ownerName
     }
 }
 
@@ -58,17 +66,29 @@ func selectWindow(
     from windows: [WindowCandidate],
     eligiblePIDs: [Int32],
     frontmostPID: Int32?,
-    titleHint: String? = nil
+    titleHint: String? = nil,
+    ownerNameHints: [String] = ["Cursor", "Code", "Visual Studio Code"]
 ) -> WindowCandidate? {
     let pidRanks = Dictionary(
         uniqueKeysWithValues: eligiblePIDs.enumerated().map { ($0.element, $0.offset) }
     )
-    let eligibleWindows = windows.filter {
-        pidRanks[$0.ownerPID] != nil &&
-            $0.bounds.width >= 100 &&
-            $0.bounds.height >= 100
-    }
     let normalizedTitleHint = titleHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalizedOwnerHints = ownerNameHints
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        .filter { !$0.isEmpty }
+
+    let eligibleWindows = windows.filter { window in
+        guard window.bounds.width >= 50, window.bounds.height >= 50 else {
+            return false
+        }
+
+        if pidRanks[window.ownerPID] != nil {
+            return true
+        }
+
+        let owner = window.ownerName?.lowercased() ?? ""
+        return normalizedOwnerHints.contains { owner.contains($0) }
+    }
 
     return eligibleWindows.min { lhs, rhs in
         let lhsMatchesTitle = normalizedTitleHint.map {
@@ -79,6 +99,12 @@ func selectWindow(
         } ?? false
         if lhsMatchesTitle != rhsMatchesTitle {
             return lhsMatchesTitle
+        }
+
+        let lhsPidMatch = pidRanks[lhs.ownerPID] != nil
+        let rhsPidMatch = pidRanks[rhs.ownerPID] != nil
+        if lhsPidMatch != rhsPidMatch {
+            return lhsPidMatch
         }
 
         let lhsIsFrontmost = lhs.ownerPID == frontmostPID
@@ -102,5 +128,20 @@ func displayContainingWindowCenter(
     displays: [DisplayCandidate]
 ) -> DisplayCandidate? {
     let center = CGPoint(x: windowBounds.midX, y: windowBounds.midY)
-    return displays.first { $0.bounds.contains(center) }
+    if let exact = displays.first(where: { $0.bounds.contains(center) }) {
+        return exact
+    }
+
+    // Fallback: nearest display by center distance (handles edge/fullscreen quirks).
+    return displays.min { lhs, rhs in
+        distanceSquared(center, lhs.bounds) < distanceSquared(center, rhs.bounds)
+    }
+}
+
+private func distanceSquared(_ point: CGPoint, _ rect: CGRect) -> CGFloat {
+    let x = min(max(point.x, rect.minX), rect.maxX)
+    let y = min(max(point.y, rect.minY), rect.maxY)
+    let dx = point.x - x
+    let dy = point.y - y
+    return dx * dx + dy * dy
 }

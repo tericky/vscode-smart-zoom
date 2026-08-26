@@ -130,6 +130,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     { dispose: () => monitor.stop() },
+    { dispose: () => helperClient.dispose() },
     statusBar
   );
   activeMonitor = monitor;

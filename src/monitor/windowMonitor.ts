@@ -37,8 +37,9 @@ export interface PollScheduler {
   clearInterval(handle: unknown): void;
 }
 
-const defaultPollInterval = 150;
+const defaultPollInterval = 500;
 const defaultStabilityChecks = 2;
+const maxErrorBackoffMs = 10000;
 
 const defaultScheduler: PollScheduler = {
   setInterval: (callback, delayMs) => setInterval(callback, delayMs),
@@ -99,6 +100,9 @@ export class WindowMonitor {
   private stabilityState: DisplayStabilityState = { consecutiveCandidateCount: 0 };
   private intervalHandle: unknown;
   private polling = false;
+  private consecutiveFailures = 0;
+  private nextAttemptAt = 0;
+  private lastLoggedError: string | undefined;
 
   public constructor(options: WindowMonitorOptions) {
     this.helperClient = options.helperClient;
@@ -150,7 +154,14 @@ export class WindowMonitor {
         return;
       }
 
+      const now = Date.now();
+      if (now < this.nextAttemptAt) {
+        return;
+      }
+
       const detection = await this.helperClient.getCurrentWindowDisplay();
+      this.onHelperSuccess();
+
       const decision = shouldApplyDisplayChange(
         this.stabilityState,
         detection.display.id,
@@ -167,9 +178,36 @@ export class WindowMonitor {
       await this.zoomApplier.applyZoomToCurrentWindow(targetZoom, display);
       this.stabilityState = decision.nextState;
     } catch (error) {
-      this.logger?.info(`Window monitor skipped zoom update: ${formatError(error)}`);
+      this.onHelperFailure(error);
     } finally {
       this.polling = false;
+    }
+  }
+
+  private onHelperSuccess(): void {
+    if (this.consecutiveFailures > 0) {
+      this.logger?.info('Window monitor recovered; display detection is working again.');
+    }
+    this.consecutiveFailures = 0;
+    this.nextAttemptAt = 0;
+    this.lastLoggedError = undefined;
+  }
+
+  private onHelperFailure(error: unknown): void {
+    this.consecutiveFailures += 1;
+    const message = formatError(error);
+    const backoffMs = Math.min(
+      maxErrorBackoffMs,
+      500 * 2 ** Math.min(this.consecutiveFailures - 1, 4)
+    );
+    this.nextAttemptAt = Date.now() + backoffMs;
+
+    // Log the first failure and later only when the error text changes.
+    if (this.lastLoggedError !== message) {
+      this.lastLoggedError = message;
+      this.logger?.info(
+        `Window monitor paused detection for ${backoffMs}ms: ${message}`
+      );
     }
   }
 }

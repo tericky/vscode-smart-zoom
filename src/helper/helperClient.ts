@@ -4,6 +4,7 @@ import type { DetectorResult } from '../display/types';
 
 export interface HelperClient {
   getCurrentWindowDisplay(): Promise<DetectorResult>;
+  dispose?(): void;
 }
 
 export interface HelperClientOptions {
@@ -31,10 +32,6 @@ interface HelperRequest {
   pid: number;
   titleHint?: string;
 }
-
-type HelperResponse =
-  | { ok: true; data: DetectorResult }
-  | { ok: false; error: string };
 
 const defaultTimeoutMs = 1500;
 const minTimeoutMs = 200;
@@ -88,12 +85,28 @@ export class NativeHelperError extends HelperClientError {
   }
 }
 
+/**
+ * Keeps one helper process alive and speaks JSON-lines over stdin/stdout.
+ * Spawning once avoids the cost of launching a native process every poll.
+ */
 export class JsonLineHelperClient implements HelperClient {
   private readonly helperPath: string;
   private readonly pid: number;
   private readonly timeoutMs: number;
   private readonly spawnProcess: SpawnProcess;
   private readonly getTitleHint?: () => string | undefined;
+  private child: ChildProcessWithoutNullStreams | undefined;
+  private stdoutBuffer = '';
+  private stderrBuffer = '';
+  private queue: Promise<void> = Promise.resolve();
+  private pending:
+    | {
+        resolve: (value: DetectorResult) => void;
+        reject: (error: unknown) => void;
+        timeout: NodeJS.Timeout;
+      }
+    | undefined;
+  private disposed = false;
 
   public constructor(helperPath: string, options: HelperClientOptions = {}) {
     this.helperPath = helperPath;
@@ -105,63 +118,153 @@ export class JsonLineHelperClient implements HelperClient {
 
   public getCurrentWindowDisplay(): Promise<DetectorResult> {
     const titleHint = this.getTitleHint?.()?.trim();
-    return this.callHelper({
+    const request: HelperRequest = {
       op: 'getCurrentWindowDisplay',
       pid: this.pid,
       ...(titleHint ? { titleHint } : {})
-    });
+    };
+
+    return this.enqueue(() => this.callHelper(request));
+  }
+
+  public dispose(): void {
+    this.disposed = true;
+    this.rejectPending(new HelperClientError('helper_error', 'Native helper client was disposed.'));
+    this.killChild();
+  }
+
+  private enqueue(operation: () => Promise<DetectorResult>): Promise<DetectorResult> {
+    const run = this.queue.then(operation, operation);
+    this.queue = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
   }
 
   private callHelper(request: HelperRequest): Promise<DetectorResult> {
-    return new Promise((resolve, reject) => {
-      let stdout = '';
-      let stderr = '';
-      let settled = false;
+    if (this.disposed) {
+      return Promise.reject(new HelperClientError('helper_error', 'Native helper client was disposed.'));
+    }
 
-      const child = this.spawnProcess(this.helperPath, [], { stdio: 'pipe' });
-      const settle = (callback: () => void): void => {
-        if (settled) {
-          return;
-        }
+    return new Promise<DetectorResult>((resolve, reject) => {
+      try {
+        this.ensureChild();
+      } catch (error) {
+        reject(error);
+        return;
+      }
 
-        settled = true;
-        clearTimeout(timeout);
-        callback();
-      };
+      const child = this.child;
+      if (!child || child.killed || child.exitCode !== null) {
+        reject(new HelperClientError('helper_error', 'Native helper process is not running.'));
+        return;
+      }
 
       const timeout = setTimeout(() => {
-        child.kill();
-        settle(() => reject(new HelperTimeoutError(this.timeoutMs)));
+        this.rejectPending(new HelperTimeoutError(this.timeoutMs));
+        this.killChild();
       }, this.timeoutMs);
 
-      child.stdout.setEncoding('utf8');
-      child.stderr.setEncoding('utf8');
-      child.stdout.on('data', (chunk: string) => {
-        stdout += chunk;
-      });
-      child.stderr.on('data', (chunk: string) => {
-        stderr += chunk;
-      });
-      child.on('error', (error) => {
-        settle(() => reject(new HelperClientError('helper_error', error.message)));
-      });
-      child.on('close', (exitCode, signal) => {
-        settle(() => {
-          if (exitCode !== 0) {
-            reject(new HelperProcessError(exitCode, signal, stderr.trim()));
-            return;
-          }
+      this.pending = { resolve, reject, timeout };
 
-          try {
-            resolve(parseHelperOutput(stdout));
-          } catch (error) {
-            reject(error);
-          }
-        });
-      });
-
-      child.stdin.end(`${JSON.stringify(request)}\n`, 'utf8');
+      try {
+        child.stdin.write(`${JSON.stringify(request)}\n`, 'utf8');
+      } catch (error) {
+        this.rejectPending(
+          new HelperClientError(
+            'helper_error',
+            error instanceof Error ? error.message : String(error)
+          )
+        );
+        this.killChild();
+      }
     });
+  }
+
+  private ensureChild(): void {
+    if (this.child && !this.child.killed && this.child.exitCode === null) {
+      return;
+    }
+
+    this.stdoutBuffer = '';
+    this.stderrBuffer = '';
+    const child = this.spawnProcess(this.helperPath, [], { stdio: 'pipe' });
+    this.child = child;
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      this.stdoutBuffer += chunk;
+      this.consumeStdoutLines();
+    });
+    child.stderr.on('data', (chunk: string) => {
+      this.stderrBuffer += chunk;
+    });
+    child.on('error', (error) => {
+      this.rejectPending(new HelperClientError('helper_error', error.message));
+      this.child = undefined;
+    });
+    child.on('close', (exitCode, signal) => {
+      if (this.pending) {
+        this.rejectPending(new HelperProcessError(exitCode, signal, this.stderrBuffer.trim()));
+      }
+      this.child = undefined;
+    });
+  }
+
+  private consumeStdoutLines(): void {
+    while (true) {
+      const newlineIndex = this.stdoutBuffer.indexOf('\n');
+      if (newlineIndex < 0) {
+        return;
+      }
+
+      const line = this.stdoutBuffer.slice(0, newlineIndex).replace(/\r$/, '');
+      this.stdoutBuffer = this.stdoutBuffer.slice(newlineIndex + 1);
+      if (line.trim().length === 0) {
+        continue;
+      }
+
+      const pending = this.pending;
+      if (!pending) {
+        continue;
+      }
+
+      this.pending = undefined;
+      clearTimeout(pending.timeout);
+
+      try {
+        pending.resolve(parseHelperOutput(line));
+      } catch (error) {
+        pending.reject(error);
+      }
+    }
+  }
+
+  private rejectPending(error: unknown): void {
+    const pending = this.pending;
+    if (!pending) {
+      return;
+    }
+
+    this.pending = undefined;
+    clearTimeout(pending.timeout);
+    pending.reject(error);
+  }
+
+  private killChild(): void {
+    const child = this.child;
+    this.child = undefined;
+    if (!child || child.killed) {
+      return;
+    }
+
+    try {
+      child.kill();
+    } catch {
+      // Ignore kill races.
+    }
   }
 }
 
@@ -176,7 +279,7 @@ function normalizeTimeout(timeoutMs: number): number {
   return timeoutMs;
 }
 
-function parseHelperOutput(output: string): DetectorResult {
+export function parseHelperOutput(output: string): DetectorResult {
   const line = output.split(/\r?\n/).find((entry) => entry.trim().length > 0);
 
   if (!line) {

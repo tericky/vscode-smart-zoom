@@ -1037,53 +1037,51 @@ int main() {
     std::ios::sync_with_stdio(false);
 
     std::string input;
-    if (!std::getline(std::cin, input)) {
-        writeError("invalid_request");
-        return EXIT_SUCCESS;
-    }
+    while (std::getline(std::cin, input)) {
+        Request request;
+        RequestParser parser(input);
+        if (!parser.parse(request)) {
+            writeError("invalid_request");
+            continue;
+        }
+        if (request.operation != kOperation) {
+            writeError("unsupported_operation");
+            continue;
+        }
+        if (request.pid <= 0 ||
+            request.pid > std::numeric_limits<std::int32_t>::max()) {
+            writeError("invalid_pid");
+            continue;
+        }
+        if (isWaylandSession()) {
+            writeError("wayland_unsupported");
+            continue;
+        }
 
-    Request request;
-    RequestParser parser(input);
-    if (!parser.parse(request)) {
-        writeError("invalid_request");
-        return EXIT_SUCCESS;
-    }
-    if (request.operation != kOperation) {
-        writeError("unsupported_operation");
-        return EXIT_SUCCESS;
-    }
-    if (request.pid <= 0 ||
-        request.pid > std::numeric_limits<std::int32_t>::max()) {
-        writeError("invalid_pid");
-        return EXIT_SUCCESS;
-    }
-    if (isWaylandSession()) {
-        writeError("wayland_unsupported");
-        return EXIT_SUCCESS;
-    }
+        Display* display = XOpenDisplay(nullptr);
+        if (display == nullptr) {
+            writeError("x11_unavailable");
+            continue;
+        }
+        const Window root = DefaultRootWindow(display);
 
-    Display* display = XOpenDisplay(nullptr);
-    if (display == nullptr) {
-        writeError("x11_unavailable");
-        return EXIT_SUCCESS;
-    }
-    const Window root = DefaultRootWindow(display);
+        WindowCandidate window;
+        if (!findWindow(display, root, request.pid, request.titleHint, window)) {
+            XCloseDisplay(display);
+            writeError("window_not_found");
+            continue;
+        }
 
-    WindowCandidate window;
-    if (!findWindow(display, root, request.pid, request.titleHint, window)) {
+        DisplayDetails displayDetails;
+        if (!displayForWindow(display, root, window.bounds, displayDetails)) {
+            XCloseDisplay(display);
+            writeError("display_not_found");
+            continue;
+        }
+
         XCloseDisplay(display);
-        writeError("window_not_found");
-        return EXIT_SUCCESS;
+        writeSuccess(window, displayDetails);
     }
 
-    DisplayDetails displayDetails;
-    if (!displayForWindow(display, root, window.bounds, displayDetails)) {
-        XCloseDisplay(display);
-        writeError("display_not_found");
-        return EXIT_SUCCESS;
-    }
-
-    XCloseDisplay(display);
-    writeSuccess(window, displayDetails);
     return EXIT_SUCCESS;
 }

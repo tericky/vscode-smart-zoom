@@ -1,8 +1,10 @@
 # Native Helper Contract
 
-The extension talks to a short-lived native helper process. Each call starts the
-platform helper, writes one JSON request followed by a newline to stdin, and
-expects one JSON response followed by a newline on stdout.
+The extension talks to a long-lived native helper process. The client starts the
+platform helper once, then writes one JSON request per line to stdin and reads
+one JSON response per line from stdout. Closing stdin ends the helper.
+
+One-shot usage (manual testing) still works: write a single line and close stdin.
 
 ## Packaged Paths
 
@@ -70,7 +72,7 @@ the current zoom and must not crash when the helper reports an error.
 
 ## Timing
 
-The extension waits up to 1500 ms by default (configurable range 200–5000 ms).
-Cold starts of CGWindowList / AppKit on macOS can exceed 300 ms, so helpers
-should still stay as fast as practical but clients must tolerate first-run
-latency. Helpers should avoid long-running discovery work in the request path.
+Helpers should answer each request quickly. The TypeScript client keeps one
+helper process alive and polls about every 500 ms by default. On repeated
+detection failures the monitor backs off (up to 10s) and only logs when the
+error message changes, to avoid log spam and wasted CPU.

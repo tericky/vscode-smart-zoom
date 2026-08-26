@@ -5,7 +5,7 @@ import { buildResolutionKey } from '../display/resolutionKey';
 
 const CONFIG_SECTION = 'autoZoom';
 const DEFAULT_ENABLED = true;
-const DEFAULT_POLL_INTERVAL = 150;
+const DEFAULT_POLL_INTERVAL = 500;
 const DEFAULT_STABILITY_CHECKS = 2;
 const DEFAULT_ZOOM = 0;
 

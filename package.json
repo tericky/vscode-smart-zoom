@@ -32,7 +32,9 @@
         },
         "autoZoom.pollInterval": {
           "type": "number",
-          "default": 150
+          "default": 500,
+          "minimum": 100,
+          "description": "How often (ms) to check which display the window is on. Higher values use less CPU."
         },
         "autoZoom.stabilityChecks": {
           "type": "number",

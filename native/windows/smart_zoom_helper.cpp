@@ -780,42 +780,40 @@ int main() {
     std::ios::sync_with_stdio(false);
 
     std::string input;
-    if (!std::getline(std::cin, input)) {
-        writeError("invalid_request");
-        return 0;
+    while (std::getline(std::cin, input)) {
+        Request request;
+        RequestParser parser(input);
+        if (!parser.parse(request)) {
+            writeError("invalid_request");
+            continue;
+        }
+        if (request.operation != kOperation) {
+            writeError("unsupported_operation");
+            continue;
+        }
+        if (request.pid <= 0 ||
+            request.pid > std::numeric_limits<DWORD>::max()) {
+            writeError("invalid_pid");
+            continue;
+        }
+
+        WindowCandidate window;
+        if (!findWindow(
+                static_cast<DWORD>(request.pid),
+                utf8ToWide(request.titleHint),
+                window)) {
+            writeError("window_not_found");
+            continue;
+        }
+
+        DisplayDetails display;
+        if (!displayForWindow(window.bounds, display)) {
+            writeError("display_not_found");
+            continue;
+        }
+
+        writeSuccess(window, display);
     }
 
-    Request request;
-    RequestParser parser(input);
-    if (!parser.parse(request)) {
-        writeError("invalid_request");
-        return 0;
-    }
-    if (request.operation != kOperation) {
-        writeError("unsupported_operation");
-        return 0;
-    }
-    if (request.pid <= 0 ||
-        request.pid > std::numeric_limits<DWORD>::max()) {
-        writeError("invalid_pid");
-        return 0;
-    }
-
-    WindowCandidate window;
-    if (!findWindow(
-            static_cast<DWORD>(request.pid),
-            utf8ToWide(request.titleHint),
-            window)) {
-        writeError("window_not_found");
-        return 0;
-    }
-
-    DisplayDetails display;
-    if (!displayForWindow(window.bounds, display)) {
-        writeError("display_not_found");
-        return 0;
-    }
-
-    writeSuccess(window, display);
     return 0;
 }
