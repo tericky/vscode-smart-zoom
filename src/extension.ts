@@ -10,6 +10,7 @@ import { prepareHelperBinary } from './helper/prepareHelper';
 import { Logger } from './log/logger';
 import { WindowMonitor } from './monitor/windowMonitor';
 import { AutoZoomStatus, AutoZoomStatusBar } from './ui/statusBar';
+import { showDisplayZoomToast } from './ui/zoomToast';
 import { CommandZoomApplier } from './zoom/zoomApplier';
 
 let activeMonitor: WindowMonitor | undefined;
@@ -60,7 +61,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const statusAwareZoomApplier = {
     applyZoomToCurrentWindow: async (
       target: number,
-      display?: ReturnType<typeof toDisplayIdentity>
+      display?: ReturnType<typeof toDisplayIdentity>,
+      context?: { source?: 'auto' | 'manual' | 'startup' }
     ): Promise<void> => {
       await commandZoomApplier.applyZoomToCurrentWindow(target);
       const appliedZoom = commandZoomApplier.tracker.getLastApplication()?.appliedZoom
@@ -69,6 +71,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         statusBar?.update({ display, zoom: appliedZoom });
       } else {
         statusBar?.updateZoom(appliedZoom);
+      }
+
+      if (context?.source === 'auto' && display) {
+        void showDisplayZoomToast({ display, zoom: appliedZoom });
       }
     }
   };
@@ -86,7 +92,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const detection = await helperClient.getCurrentWindowDisplay();
       const display = toDisplayIdentity(detection);
       const targetZoom = resolveZoom({ display, config: initialConfig });
-      await statusAwareZoomApplier.applyZoomToCurrentWindow(targetZoom, display);
+      await statusAwareZoomApplier.applyZoomToCurrentWindow(targetZoom, display, {
+        source: 'startup'
+      });
       monitor.seedCurrentDisplay(detection.display.id);
       initialStatus = {
         display,

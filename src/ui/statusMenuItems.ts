@@ -10,7 +10,6 @@ export const MAX_ZOOM_LEVEL = 8;
 export type StatusMenuAction =
   | { kind: 'zoomDelta'; delta: number }
   | { kind: 'setZoom'; zoom: number }
-  | { kind: 'customZoom' }
   | { kind: 'showStatus' }
   | { kind: 'detect' }
   | { kind: 'clearLearned' }
@@ -113,11 +112,6 @@ export function buildStatusMenuItems(input: {
         ? `Save and apply for ${displayName}`
         : `Minimum is Zoom Level ${MIN_ZOOM_LEVEL}`,
       action: { kind: 'zoomDelta', delta: -1 }
-    },
-    {
-      label: '$(edit) Custom size…',
-      description: `Current ${currentLevelLabel}`,
-      action: { kind: 'customZoom' }
     },
     {
       label: 'More',

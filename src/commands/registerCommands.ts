@@ -14,11 +14,7 @@ import {
   MAX_ZOOM_LEVEL,
   MIN_ZOOM_LEVEL
 } from '../ui/statusMenuItems';
-import {
-  formatZoomPercent,
-  parseZoomInput,
-  zoomLevelToPercent
-} from '../zoom/zoomFormat';
+import { formatZoomPercent } from '../zoom/zoomFormat';
 
 export interface CommandLogger {
   info(message: string): void;
@@ -105,29 +101,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
 
   registerCommand(context, 'autoZoom.configureCurrentDisplay', async () => {
     try {
-      const { display, zoom: currentZoom } = await resolveCurrentDisplayZoom();
-      const input = await vscode.window.showInputBox({
-        title: 'Configure Current Display',
-        prompt: 'Enter zoom as a percent (for example 100 or 120%).',
-        value: String(zoomLevelToPercent(currentZoom)),
-        placeHolder: '100',
-        validateInput: validateZoomInput
-      });
-
-      if (input === undefined) {
-        return;
-      }
-
-      const zoom = parseZoomInput(input);
-      if (zoom === undefined) {
-        await vscode.window.showErrorMessage('Enter a valid zoom percent.');
-        return;
-      }
-
-      await applySavedZoom(display, zoom);
-      await vscode.window.showInformationMessage(
-        `${formatZoomPercent(zoom)} was saved and applied for this display.`
-      );
+      await vscode.commands.executeCommand('autoZoom.statusMenu');
     } catch (error) {
       await onError(error);
     }
@@ -222,25 +196,6 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         case 'setZoom':
           await applySavedZoom(display, picked.action.zoom);
           break;
-        case 'customZoom': {
-          const input = await vscode.window.showInputBox({
-            title: 'Custom Zoom',
-            prompt: `Enter zoom as a percent (for example 100 or 120%). Range: Zoom Level ${MIN_ZOOM_LEVEL}…${MAX_ZOOM_LEVEL}.`,
-            value: String(zoomLevelToPercent(zoom)),
-            placeHolder: '100',
-            validateInput: validateZoomInput
-          });
-          if (input === undefined) {
-            return;
-          }
-          const nextZoom = parseZoomInput(input);
-          if (nextZoom === undefined) {
-            await vscode.window.showErrorMessage('Enter a valid zoom percent.');
-            return;
-          }
-          await applySavedZoom(display, nextZoom);
-          break;
-        }
         case 'showStatus':
           logger.show();
           await vscode.window.showInformationMessage(formatStatusMessage({ display, zoom }));
@@ -276,19 +231,6 @@ async function setEnabled(enabled: boolean): Promise<void> {
   await vscode.workspace
     .getConfiguration('autoZoom')
     .update('enabled', enabled, vscode.ConfigurationTarget.Global);
-}
-
-function validateZoomInput(value: string): string | undefined {
-  const zoom = parseZoomInput(value);
-  if (zoom === undefined) {
-    return 'Enter a percent like 100 or 120%.';
-  }
-
-  if (zoom < MIN_ZOOM_LEVEL || zoom > MAX_ZOOM_LEVEL) {
-    return `Zoom must map to Zoom Level ${MIN_ZOOM_LEVEL}…${MAX_ZOOM_LEVEL}.`;
-  }
-
-  return undefined;
 }
 
 export function toDisplayIdentity(result: DetectorResult): DisplayIdentity {

@@ -71,11 +71,9 @@ test('includes separators and secondary actions', () => {
   const items = buildStatusMenuItems({ display, zoom: 0, enabled: true });
   assert.ok(items.some((item) => item.kind === MENU_SEPARATOR_KIND && item.label === 'Zoom size'));
   assert.ok(items.some((item) => item.action?.kind === 'zoomDelta' && item.action.delta === 1));
-  assert.ok(items.some((item) => item.action?.kind === 'customZoom'));
+  assert.ok(!items.some((item) => (item.action as { kind?: string } | undefined)?.kind === 'customZoom'));
   assert.ok(items.some((item) => item.action?.kind === 'clearLearned'));
   assert.ok(items.some((item) => item.action?.kind === 'toggleEnabled'));
-  const custom = items.find((item) => item.action?.kind === 'customZoom');
-  assert.equal(custom?.description, `Current ${formatZoomLevelOption(0)}`);
   const reset = items.find((item) => item.isResetAction === true);
   assert.equal(reset?.description, `Already at ${formatZoomLevelOption(0)}`);
 });

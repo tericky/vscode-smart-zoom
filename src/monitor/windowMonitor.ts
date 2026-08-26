@@ -3,8 +3,16 @@ import type { DisplayIdentity, DetectorResult } from '../display/types';
 import type { ResolveZoomInput } from '../display/zoomResolver';
 import type { HelperClient } from '../helper/helperClient';
 
+export interface ZoomApplyContext {
+  source?: 'auto' | 'manual' | 'startup';
+}
+
 export interface ZoomApplier {
-  applyZoomToCurrentWindow(target: number, display?: DisplayIdentity): Promise<void>;
+  applyZoomToCurrentWindow(
+    target: number,
+    display?: DisplayIdentity,
+    context?: ZoomApplyContext
+  ): Promise<void>;
 }
 
 export interface LoggerLike {
@@ -234,7 +242,7 @@ export class WindowMonitor {
     try {
       const display = toDisplayIdentity(detection);
       const targetZoom = this.resolveZoom({ display, config });
-      await this.zoomApplier.applyZoomToCurrentWindow(targetZoom, display);
+      await this.zoomApplier.applyZoomToCurrentWindow(targetZoom, display, { source: 'auto' });
       this.stabilityState = decision.nextState;
     } catch (error) {
       this.onHelperFailure(error);

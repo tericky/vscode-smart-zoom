@@ -69,7 +69,7 @@
       },
       {
         "command": "autoZoom.configureCurrentDisplay",
-        "title": "Smart Zoom: Configure Current Display"
+        "title": "Smart Zoom: Configure Current Display (Menu)"
       },
       {
         "command": "autoZoom.showStatus",
