@@ -6,6 +6,10 @@
   "publisher": "tericky",
   "author": "Tericky <tericky@gmail.com>",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tericky/vscode-smart-zoom.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
