@@ -70,5 +70,7 @@ the current zoom and must not crash when the helper reports an error.
 
 ## Timing
 
-The extension expects the helper to respond within 200 to 500 ms. Helpers should
-avoid long-running discovery work in the request path.
+The extension waits up to 1500 ms by default (configurable range 200–5000 ms).
+Cold starts of CGWindowList / AppKit on macOS can exceed 300 ms, so helpers
+should still stay as fast as practical but clients must tolerate first-run
+latency. Helpers should avoid long-running discovery work in the request path.

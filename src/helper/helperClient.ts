@@ -36,9 +36,9 @@ type HelperResponse =
   | { ok: true; data: DetectorResult }
   | { ok: false; error: string };
 
-const defaultTimeoutMs = 300;
+const defaultTimeoutMs = 1500;
 const minTimeoutMs = 200;
-const maxTimeoutMs = 500;
+const maxTimeoutMs = 5000;
 
 export class HelperClientError extends Error {
   public readonly code: HelperErrorCode;

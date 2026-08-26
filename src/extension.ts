@@ -6,6 +6,7 @@ import { getAutoZoomConfig } from './config/configStore';
 import { resolveZoom } from './display/zoomResolver';
 import { JsonLineHelperClient, NativeHelperError } from './helper/helperClient';
 import { getHelperPath } from './helper/helperLocator';
+import { prepareHelperBinary } from './helper/prepareHelper';
 import { Logger } from './log/logger';
 import { WindowMonitor } from './monitor/windowMonitor';
 import { AutoZoomStatus, AutoZoomStatusBar } from './ui/statusBar';
@@ -29,7 +30,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   }
 
-  const helperClient = new JsonLineHelperClient(getHelperPath(context), {
+  const helperPath = getHelperPath(context);
+  await prepareHelperBinary(helperPath);
+
+  const helperClient = new JsonLineHelperClient(helperPath, {
     getTitleHint: getBestEffortTitleHint
   });
   const commandZoomApplier = new CommandZoomApplier({ logger });

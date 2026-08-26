@@ -58,6 +58,7 @@ is unavailable.
 5. Wayland: helper returns `wayland_unsupported`; extension shows a one-time warning and does not crash.
 6. macOS may require Screen Recording permission for reliable window enumeration.
 7. GUI acceptance (multi-window drag, fullscreen, hot plug) still needs manual F5 verification.
+8. Helper client default timeout is 1500 ms (was 300 ms); macOS CGWindowList cold starts often take 250–400 ms and can time out under the old limit.
 
 ## Manual F5 steps (macOS)
 
