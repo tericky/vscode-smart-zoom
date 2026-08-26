@@ -3,6 +3,9 @@
   "displayName": "Smart Auto Zoom",
   "description": "Automatically apply per-window zoom based on the current display",
   "version": "0.0.1",
+  "publisher": "tericky",
+  "author": "Tericky <tericky@gmail.com>",
+  "license": "Apache-2.0",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -13,6 +16,12 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test \"out/**/*.test.js\"",
+    "package": "npm run compile && npx --yes @vscode/vsce package --no-dependencies"
+  },
   "contributes": {
     "configuration": {
       "title": "Auto Zoom",
@@ -65,10 +74,6 @@
         "title": "Auto Zoom: Show Status"
       }
     ]
-  },
-  "scripts": {
-    "compile": "tsc -p ./",
-    "test": "npm run compile && node --test \"out/**/*.test.js\""
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -1,0 +1,25 @@
+.vscode/**
+.vscodeignore
+.superpowers/**
+docs/**
+spikes/**
+src/**
+**/*.ts
+tsconfig.json
+.gitignore
+TESTING.md
+package-lock.json
+
+**/*.map
+**/*.test.js
+**/tsconfig.tsbuildinfo
+
+# Native sources (keep packaged binaries only)
+native/README.md
+native/macos/**
+native/windows/**
+native/linux-x11/**
+
+# Platform binaries not built on this host
+native/win32/**
+native/linux/**
