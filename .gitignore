@@ -1,0 +1,11 @@
+# Project docs are local-only (not versioned)
+docs/
+
+# Dependencies and build output
+node_modules/
+**/out/
+*.vsix
+.DS_Store
+
+# Local agent scratch (not versioned)
+.superpowers/
