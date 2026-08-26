@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 
 import { clearLearnedConfiguration, saveDisplayConfiguration } from '../config/configStore';
 import type { AutoZoomConfig } from '../config/types';
-import type { DisplayIdentity, DetectorResult } from '../display/types';
+import { toDisplayIdentity } from '../display/identity';
+import type { DisplayIdentity } from '../display/types';
 import { resolveZoom } from '../display/zoomResolver';
 import type { HelperClient } from '../helper/helperClient';
 import type { ZoomApplier } from '../monitor/windowMonitor';
@@ -15,6 +16,8 @@ import {
   MIN_ZOOM_LEVEL
 } from '../ui/statusMenuItems';
 import { formatZoomPercent } from '../zoom/zoomFormat';
+
+export { toDisplayIdentity } from '../display/identity';
 
 export interface CommandLogger {
   info(message: string): void;
@@ -44,22 +47,19 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     onError
   } = options;
 
-  const applySavedZoom = async (display: DisplayIdentity, zoom: number): Promise<void> => {
-    const normalized = clampZoomLevel(zoom);
-    await saveDisplayConfiguration(display, normalized);
-    await zoomApplier.applyZoomToCurrentWindow(normalized);
-    statusBar.update({ display, zoom: normalized });
-    logger.info(
-      `Saved zoom ${formatZoomPercent(normalized)} for display ${display.displayId ?? 'unknown'}.`
-    );
-  };
-
-  const applyZoomWithoutLearning = async (
+  const applyZoom = async (
     display: DisplayIdentity,
-    zoom: number
+    zoom: number,
+    learn: boolean
   ): Promise<void> => {
     const normalized = clampZoomLevel(zoom);
     await zoomApplier.applyZoomToCurrentWindow(normalized);
+    if (learn) {
+      await saveDisplayConfiguration(display, normalized);
+      logger.info(
+        `Saved zoom ${formatZoomPercent(normalized)} for display ${display.displayId ?? 'unknown'}.`
+      );
+    }
     statusBar.update({ display, zoom: normalized });
   };
 
@@ -110,7 +110,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
   registerCommand(context, 'autoZoom.zoomInCurrentDisplay', async () => {
     try {
       const { display, zoom } = await resolveCurrentDisplayZoom();
-      await applySavedZoom(display, zoom + 1);
+      await applyZoom(display, zoom + 1, true);
     } catch (error) {
       await onError(error);
     }
@@ -119,7 +119,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
   registerCommand(context, 'autoZoom.zoomOutCurrentDisplay', async () => {
     try {
       const { display, zoom } = await resolveCurrentDisplayZoom();
-      await applySavedZoom(display, zoom - 1);
+      await applyZoom(display, zoom - 1, true);
     } catch (error) {
       await onError(error);
     }
@@ -145,12 +145,20 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     await clearLearnedConfiguration();
     logger.info('Cleared all learned Smart Zoom display profiles and zoom rules.');
 
+    let appliedReset = false;
     if (display) {
-      await applyZoomWithoutLearning(display, 0);
+      try {
+        await applyZoom(display, 0, false);
+        appliedReset = true;
+      } catch (error) {
+        logger.info(`Cleared settings but could not reset zoom: ${formatError(error)}`);
+      }
     }
 
     await vscode.window.showInformationMessage(
-      'Cleared learned settings and applied Zoom Level 0 : 100 % to this window.'
+      appliedReset
+        ? 'Cleared learned settings and applied Zoom Level 0 : 100 % to this window.'
+        : 'Cleared learned settings. Could not apply Zoom Level 0 to this window.'
     );
   };
 
@@ -190,11 +198,11 @@ export function registerCommands(options: RegisterCommandsOptions): void {
             );
             break;
           }
-          await applySavedZoom(display, nextZoom);
+          await applyZoom(display, nextZoom, true);
           break;
         }
         case 'setZoom':
-          await applySavedZoom(display, picked.action.zoom);
+          await applyZoom(display, picked.action.zoom, true);
           break;
         case 'showStatus':
           logger.show();
@@ -233,12 +241,6 @@ async function setEnabled(enabled: boolean): Promise<void> {
     .update('enabled', enabled, vscode.ConfigurationTarget.Global);
 }
 
-export function toDisplayIdentity(result: DetectorResult): DisplayIdentity {
-  return {
-    displayId: result.display.id,
-    name: result.display.name,
-    width: result.display.width,
-    height: result.display.height,
-    scaleFactor: result.display.scaleFactor
-  };
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

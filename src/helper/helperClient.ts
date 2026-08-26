@@ -46,6 +46,9 @@ const defaultTimeoutMs = 1500;
 const minTimeoutMs = 200;
 const maxTimeoutMs = 5000;
 const defaultWatchIntervalMs = 200;
+const maxStdoutBufferChars = 1024 * 1024;
+const maxStderrBufferChars = 64 * 1024;
+const maxIgnoredRequestIds = 64;
 
 export class HelperClientError extends Error {
   public readonly code: HelperErrorCode;
@@ -113,11 +116,16 @@ export class JsonLineHelperClient implements HelperClient {
       reject: (error: unknown) => void;
       timeout: NodeJS.Timeout;
       expectData: boolean;
+      role: 'watch' | 'rpc';
     }
   >();
   private watchListener: ((result: DetectorResult) => void) | undefined;
   private watchErrorListener: ((error: unknown) => void) | undefined;
   private disposed = false;
+  /** One-shot RPC ids that timed out; ignore the first late reply with that id. */
+  private readonly ignoredRequestIds = new Set<string>();
+  /** Native watch snapshots reuse this requestId after the first watch response. */
+  private activeWatchRequestId: string | undefined;
 
   public constructor(helperPath: string, options: HelperClientOptions = {}) {
     this.helperPath = helperPath;
@@ -147,24 +155,32 @@ export class JsonLineHelperClient implements HelperClient {
     this.watchListener = onChange;
     this.watchErrorListener = onError;
     const titleHint = this.getTitleHint?.()?.trim();
-    await this.enqueue(async () => {
-      const first = await this.sendRequest({
-        op: 'watch',
-        pid: this.pid,
-        intervalMs: this.watchIntervalMs,
-        ...(titleHint ? { titleHint } : {})
-      }, true);
-      if (first) {
-        onChange(first as DetectorResult);
-      }
-    });
+    try {
+      await this.enqueue(async () => {
+        const first = await this.sendRequest({
+          op: 'watch',
+          pid: this.pid,
+          intervalMs: this.watchIntervalMs,
+          ...(titleHint ? { titleHint } : {})
+        }, true, 'watch');
+        if (first) {
+          this.watchListener?.(first as DetectorResult);
+        }
+      });
+    } catch (error) {
+      this.watchListener = undefined;
+      this.watchErrorListener = undefined;
+      this.activeWatchRequestId = undefined;
+      throw error;
+    }
   }
 
   public async stopWatch(): Promise<void> {
     this.watchListener = undefined;
     this.watchErrorListener = undefined;
+    this.activeWatchRequestId = undefined;
     await this.enqueue(async () => {
-      await this.sendRequest({ op: 'unwatch' }, false);
+      await this.sendRequest({ op: 'unwatch' }, false, 'rpc');
     });
   }
 
@@ -172,6 +188,8 @@ export class JsonLineHelperClient implements HelperClient {
     this.disposed = true;
     this.watchListener = undefined;
     this.watchErrorListener = undefined;
+    this.activeWatchRequestId = undefined;
+    this.ignoredRequestIds.clear();
     for (const [requestId, pending] of this.pending) {
       clearTimeout(pending.timeout);
       pending.reject(new HelperClientError('helper_error', 'Native helper client was disposed.'));
@@ -189,7 +207,11 @@ export class JsonLineHelperClient implements HelperClient {
     return run;
   }
 
-  private sendRequest(request: Omit<HelperRequest, 'requestId'>, expectData: boolean): Promise<DetectorResult | void> {
+  private sendRequest(
+    request: Omit<HelperRequest, 'requestId'>,
+    expectData: boolean,
+    role: 'watch' | 'rpc' = 'rpc'
+  ): Promise<DetectorResult | void> {
     if (this.disposed) {
       return Promise.reject(new HelperClientError('helper_error', 'Native helper client was disposed.'));
     }
@@ -211,11 +233,17 @@ export class JsonLineHelperClient implements HelperClient {
       const requestId = randomUUID();
       const timeout = setTimeout(() => {
         this.pending.delete(requestId);
+        if (role === 'watch') {
+          // Native keeps emitting snapshots with the watch requestId.
+          this.activeWatchRequestId = requestId;
+        } else {
+          rememberIgnoredRequestId(this.ignoredRequestIds, requestId);
+        }
         reject(new HelperTimeoutError(this.timeoutMs));
         // Do not kill the whole helper on one timeout; watch may still be useful.
       }, this.timeoutMs);
 
-      this.pending.set(requestId, { resolve, reject, timeout, expectData });
+      this.pending.set(requestId, { resolve, reject, timeout, expectData, role });
 
       try {
         child.stdin.write(`${JSON.stringify({ ...request, requestId })}\n`, 'utf8');
@@ -247,10 +275,20 @@ export class JsonLineHelperClient implements HelperClient {
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {
       this.stdoutBuffer += chunk;
+      if (this.stdoutBuffer.length > maxStdoutBufferChars) {
+        this.stdoutBuffer = '';
+        this.watchErrorListener?.(
+          new HelperProtocolError('Native helper stdout exceeded safety limit without a complete line.')
+        );
+        return;
+      }
       this.consumeStdoutLines();
     });
     child.stderr.on('data', (chunk: string) => {
       this.stderrBuffer += chunk;
+      if (this.stderrBuffer.length > maxStderrBufferChars) {
+        this.stderrBuffer = this.stderrBuffer.slice(-maxStderrBufferChars);
+      }
     });
     child.on('error', (error) => {
       this.failAllPending(new HelperClientError('helper_error', error.message));
@@ -298,6 +336,10 @@ export class JsonLineHelperClient implements HelperClient {
     }
 
     const requestId = typeof response.requestId === 'string' ? response.requestId : undefined;
+    if (requestId && this.ignoredRequestIds.delete(requestId)) {
+      return;
+    }
+
     const pending = this.takePending(requestId);
     if (pending) {
       clearTimeout(pending.timeout);
@@ -324,6 +366,10 @@ export class JsonLineHelperClient implements HelperClient {
           throw new HelperProtocolError('Native helper success response includes invalid detector data.');
         }
 
+        if (pending.role === 'watch' && requestId) {
+          this.activeWatchRequestId = requestId;
+        }
+
         pending.resolve(response.data);
       } catch (error) {
         pending.reject(error);
@@ -332,8 +378,11 @@ export class JsonLineHelperClient implements HelperClient {
     }
 
     // Spontaneous watch update (display change push).
+    // Native watch reuses the original watch requestId on every snapshot.
     if (response.ok && isDetectorResult(response.data)) {
-      this.watchListener?.(response.data);
+      if (!requestId || requestId === this.activeWatchRequestId) {
+        this.watchListener?.(response.data);
+      }
       return;
     }
 
@@ -347,6 +396,7 @@ export class JsonLineHelperClient implements HelperClient {
     reject: (error: unknown) => void;
     timeout: NodeJS.Timeout;
     expectData: boolean;
+    role: 'watch' | 'rpc';
   } | undefined {
     if (requestId && this.pending.has(requestId)) {
       const pending = this.pending.get(requestId);
@@ -440,4 +490,14 @@ function formatExit(exitCode: number | null, signal: NodeJS.Signals | null): str
   }
 
   return signal === null ? 'unknown exit status' : `signal ${signal}`;
+}
+
+function rememberIgnoredRequestId(store: Set<string>, requestId: string): void {
+  if (store.size >= maxIgnoredRequestIds) {
+    const oldest = store.values().next().value;
+    if (oldest !== undefined) {
+      store.delete(oldest);
+    }
+  }
+  store.add(requestId);
 }

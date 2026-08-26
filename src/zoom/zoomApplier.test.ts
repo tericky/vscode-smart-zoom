@@ -50,7 +50,7 @@ test('rounds fractional target and tracks inexact integer application', async ()
     resetBaseline: 0,
     commandCount: 2
   });
-  assert.match(logger.messages[0], /Rounded requested zoom 1\.5/);
+  assert.match(logger.messages[0], /Clamped requested zoom 1\.5/);
 });
 
 test('refuses when window.zoomPerWindow is false and leaves tracker unchanged', async () => {
@@ -89,11 +89,37 @@ test('updates tracker only after all zoom commands complete', async () => {
   assert.equal(tracker.getLastApplication(), undefined);
 });
 
+test('coalesces burst applies to the latest target', async () => {
+  const vscodeApi = new FakeVscodeZoomApi({
+    zoomPerWindow: true,
+    zoomLevel: 0,
+    commandDelayMs: 15
+  });
+  const tracker = new ZoomTracker();
+  const applier = new CommandZoomApplier({ vscodeApi, tracker });
+
+  const first = applier.applyZoomToCurrentWindow(1);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const second = applier.applyZoomToCurrentWindow(2);
+  const third = applier.applyZoomToCurrentWindow(3);
+  await Promise.all([first, second, third]);
+
+  assert.equal(tracker.getLastApplication()?.appliedZoom, 3);
+  const resetCount = vscodeApi.executedCommands.filter(
+    (command) => command === 'workbench.action.zoomReset'
+  ).length;
+  assert.equal(resetCount, 2);
+});
+
 class FakeVscodeZoomApi implements VscodeZoomApi {
   public readonly executedCommands: string[] = [];
   public readonly commands = {
     executeCommand: async (command: string): Promise<unknown> => {
       this.executedCommands.push(command);
+
+      if (this.commandDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, this.commandDelayMs));
+      }
 
       if (command === this.failOnCommand) {
         throw new Error(`Command failed: ${command}`);
@@ -120,15 +146,18 @@ class FakeVscodeZoomApi implements VscodeZoomApi {
   private readonly zoomPerWindow: boolean;
   private readonly zoomLevel: number;
   private readonly failOnCommand?: string;
+  private readonly commandDelayMs: number;
 
   public constructor(options: {
     zoomPerWindow: boolean;
     zoomLevel: number;
     failOnCommand?: string;
+    commandDelayMs?: number;
   }) {
     this.zoomPerWindow = options.zoomPerWindow;
     this.zoomLevel = options.zoomLevel;
     this.failOnCommand = options.failOnCommand;
+    this.commandDelayMs = options.commandDelayMs ?? 0;
   }
 }
 

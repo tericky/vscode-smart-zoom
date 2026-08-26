@@ -9,19 +9,6 @@ import {
   type StatusMenuItem
 } from './statusMenuItems';
 
-export {
-  buildStatusMenuItems,
-  clampZoomLevel,
-  findCurrentZoomMenuItem,
-  formatZoomLevelOption,
-  MAX_ZOOM_LEVEL,
-  MENU_SEPARATOR_KIND,
-  MIN_ZOOM_LEVEL,
-  PRESET_ZOOM_LEVELS,
-  type StatusMenuAction,
-  type StatusMenuItem
-} from './statusMenuItems';
-
 export function showStatusMenu(options: {
   display: DisplayIdentity;
   zoom: number;

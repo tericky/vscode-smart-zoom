@@ -27,6 +27,10 @@ export async function showDisplayZoomToast(input: {
   scheduleAutoClose(toastDurationMs + 80);
 }
 
+export function disposeDisplayZoomToast(): void {
+  disposeHudPanel();
+}
+
 function ensureHudPanel(): vscode.WebviewPanel {
   if (hudPanel) {
     return hudPanel;
@@ -45,6 +49,7 @@ function ensureHudPanel(): vscode.WebviewPanel {
 
   messageSubscription = hudPanel.webview.onDidReceiveMessage((message: { type?: string }) => {
     if (message?.type === 'done') {
+      // Prefer host timer; webview message is a backup if the panel is still open.
       disposeHudPanel();
     }
   });

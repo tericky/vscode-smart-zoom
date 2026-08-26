@@ -30,10 +30,6 @@ export class AutoZoomStatusBar implements vscode.Disposable {
     this.item.show();
   }
 
-  public getCachedStatus(): AutoZoomStatus | undefined {
-    return this.currentStatus;
-  }
-
   public update(status: AutoZoomStatus): void {
     this.currentStatus = status;
     this.item.text = formatStatusText(status);

@@ -3,8 +3,16 @@
  * percentage ≈ 100 * 1.2^zoomLevel
  */
 
+export const MIN_ZOOM_LEVEL = -8;
+export const MAX_ZOOM_LEVEL = 8;
+
 export function zoomLevelToPercent(zoomLevel: number): number {
   return Math.round(100 * Math.pow(1.2, zoomLevel));
+}
+
+export function clampZoomLevel(zoomLevel: number): number {
+  const rounded = Math.round(zoomLevel);
+  return Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, rounded));
 }
 
 export function percentToZoomLevel(percent: number): number {

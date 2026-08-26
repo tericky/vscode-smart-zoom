@@ -1,4 +1,5 @@
 import type { ZoomApplier as WindowMonitorZoomApplier } from '../monitor/windowMonitor';
+import { clampZoomLevel } from './zoomFormat';
 import { ZoomTracker } from './zoomTracker';
 
 type ZoomCommand = 'workbench.action.zoomReset' | 'workbench.action.zoomIn' | 'workbench.action.zoomOut';
@@ -39,6 +40,8 @@ export class CommandZoomApplier implements WindowMonitorZoomApplier {
   public readonly tracker: ZoomTracker;
   private readonly vscodeApi: VscodeZoomApi;
   private readonly logger?: ZoomApplierLogger;
+  private applyChain: Promise<void> = Promise.resolve();
+  private queuedTarget: number | undefined;
 
   public constructor(options: CommandZoomApplierOptions = {}) {
     this.vscodeApi = options.vscodeApi ?? loadVscodeApi();
@@ -46,7 +49,24 @@ export class CommandZoomApplier implements WindowMonitorZoomApplier {
     this.logger = options.logger;
   }
 
-  public async applyZoomToCurrentWindow(target: number): Promise<void> {
+  public applyZoomToCurrentWindow(target: number): Promise<void> {
+    this.queuedTarget = target;
+    this.applyChain = this.applyChain.then(
+      () => this.drainQueuedTargets(),
+      () => this.drainQueuedTargets()
+    );
+    return this.applyChain;
+  }
+
+  private async drainQueuedTargets(): Promise<void> {
+    while (this.queuedTarget !== undefined) {
+      const next = this.queuedTarget;
+      this.queuedTarget = undefined;
+      await this.applyZoomUnlocked(next);
+    }
+  }
+
+  private async applyZoomUnlocked(target: number): Promise<void> {
     if (!Number.isFinite(target)) {
       throw new Error(`Zoom target must be finite. Received: ${target}`);
     }
@@ -62,7 +82,7 @@ export class CommandZoomApplier implements WindowMonitorZoomApplier {
     }
 
     const resetBaseline = configuration.get<number>('zoomLevel', 0);
-    const appliedZoom = Math.round(target);
+    const appliedZoom = clampZoomLevel(target);
     const commandSequence = buildRelativeZoomCommandSequence(resetBaseline, appliedZoom);
 
     if (commandSequence === undefined) {
@@ -73,7 +93,7 @@ export class CommandZoomApplier implements WindowMonitorZoomApplier {
 
     if (appliedZoom !== target) {
       this.logger?.info(
-        `Rounded requested zoom ${target} to reachable integer zoom ${appliedZoom}.`
+        `Clamped requested zoom ${target} to reachable integer zoom ${appliedZoom}.`
       );
     }
 

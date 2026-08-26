@@ -1,7 +1,9 @@
 import type { AutoZoomConfig } from '../config/types';
+import { toDisplayIdentity } from '../display/identity';
 import type { DisplayIdentity, DetectorResult } from '../display/types';
 import type { ResolveZoomInput } from '../display/zoomResolver';
 import type { HelperClient } from '../helper/helperClient';
+import { clampZoomLevel } from '../zoom/zoomFormat';
 
 export interface ZoomApplyContext {
   source?: 'auto' | 'manual' | 'startup';
@@ -113,6 +115,8 @@ export class WindowMonitor {
   private lastLoggedError: string | undefined;
   private mode: 'watch' | 'poll' | 'stopped' = 'stopped';
   private applying = false;
+  private pendingDetection: DetectorResult | undefined;
+  private runId = 0;
 
   public constructor(options: WindowMonitorOptions) {
     this.helperClient = options.helperClient;
@@ -128,23 +132,36 @@ export class WindowMonitor {
       return;
     }
 
+    const runId = ++this.runId;
+
     if (typeof this.helperClient.startWatch === 'function') {
       this.mode = 'watch';
       void this.helperClient.startWatch(
         (detection) => {
+          if (runId !== this.runId) {
+            return;
+          }
           void this.handleDetection(detection);
         },
         (error) => {
+          if (runId !== this.runId) {
+            return;
+          }
           this.onHelperFailure(error);
         }
       ).then(() => {
+        if (runId !== this.runId) {
+          return;
+        }
         this.logger?.info('Window monitor started in event/watch mode.');
       }).catch((error: unknown) => {
+        if (runId !== this.runId) {
+          return;
+        }
         this.logger?.info(
           `Watch mode unavailable (${formatError(error)}); falling back to polling.`
         );
-        this.mode = 'stopped';
-        this.startPolling();
+        void this.fallbackToPolling(runId);
       });
       return;
     }
@@ -153,9 +170,8 @@ export class WindowMonitor {
   }
 
   public stop(): void {
-    if (this.mode === 'watch') {
-      void this.helperClient.stopWatch?.();
-    }
+    this.runId += 1;
+    void this.helperClient.stopWatch?.();
 
     if (this.intervalHandle !== undefined) {
       this.scheduler.clearInterval(this.intervalHandle);
@@ -163,6 +179,7 @@ export class WindowMonitor {
     }
 
     this.mode = 'stopped';
+    this.pendingDetection = undefined;
   }
 
   public seedCurrentDisplay(displayId: string): void {
@@ -213,13 +230,35 @@ export class WindowMonitor {
     this.logger?.info(`Window monitor started in poll mode (${pollInterval}ms).`);
   }
 
-  private async handleDetection(detection: DetectorResult): Promise<void> {
-    if (this.applying) {
+  private async fallbackToPolling(runId: number): Promise<void> {
+    if (runId !== this.runId) {
       return;
     }
 
+    try {
+      await this.helperClient.stopWatch?.();
+    } catch {
+      // Ignore unwatch races when watch never fully started.
+    }
+
+    if (runId !== this.runId) {
+      return;
+    }
+
+    this.mode = 'stopped';
+    this.startPolling();
+  }
+
+  private async handleDetection(detection: DetectorResult): Promise<void> {
+    if (this.applying) {
+      this.pendingDetection = detection;
+      return;
+    }
+
+    const runId = this.runId;
     const config = this.getConfig();
     if (config.enabled === false) {
+      this.pendingDetection = undefined;
       return;
     }
 
@@ -241,13 +280,23 @@ export class WindowMonitor {
     this.applying = true;
     try {
       const display = toDisplayIdentity(detection);
-      const targetZoom = this.resolveZoom({ display, config });
+      const targetZoom = clampZoomLevel(this.resolveZoom({ display, config }));
       await this.zoomApplier.applyZoomToCurrentWindow(targetZoom, display, { source: 'auto' });
-      this.stabilityState = decision.nextState;
+      if (runId === this.runId) {
+        this.stabilityState = decision.nextState;
+      }
     } catch (error) {
-      this.onHelperFailure(error);
+      this.logger?.info(`Failed to apply auto zoom: ${formatError(error)}`);
     } finally {
       this.applying = false;
+      if (runId !== this.runId) {
+        return;
+      }
+      const pending = this.pendingDetection;
+      this.pendingDetection = undefined;
+      if (pending) {
+        void this.handleDetection(pending);
+      }
     }
   }
 
@@ -276,16 +325,6 @@ export class WindowMonitor {
       );
     }
   }
-}
-
-function toDisplayIdentity(result: DetectorResult): DisplayIdentity {
-  return {
-    displayId: result.display.id,
-    name: result.display.name,
-    width: result.display.width,
-    height: result.display.height,
-    scaleFactor: result.display.scaleFactor
-  };
 }
 
 function normalizePositiveInteger(value: number | undefined, fallback: number): number {

@@ -10,8 +10,9 @@ import { prepareHelperBinary } from './helper/prepareHelper';
 import { Logger } from './log/logger';
 import { WindowMonitor } from './monitor/windowMonitor';
 import { AutoZoomStatus, AutoZoomStatusBar } from './ui/statusBar';
-import { showDisplayZoomToast } from './ui/zoomToast';
+import { showDisplayZoomToast, disposeDisplayZoomToast } from './ui/zoomToast';
 import { CommandZoomApplier } from './zoom/zoomApplier';
+import { clampZoomLevel } from './zoom/zoomFormat';
 
 let activeMonitor: WindowMonitor | undefined;
 let activeStatusBar: AutoZoomStatusBar | undefined;
@@ -91,14 +92,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
       const detection = await helperClient.getCurrentWindowDisplay();
       const display = toDisplayIdentity(detection);
-      const targetZoom = resolveZoom({ display, config: initialConfig });
+      const targetZoom = clampZoomLevel(resolveZoom({ display, config: initialConfig }));
       await statusAwareZoomApplier.applyZoomToCurrentWindow(targetZoom, display, {
         source: 'startup'
       });
       monitor.seedCurrentDisplay(detection.display.id);
       initialStatus = {
         display,
-        zoom: commandZoomApplier.tracker.getLastApplication()?.appliedZoom ?? Math.round(targetZoom)
+        zoom: commandZoomApplier.tracker.getLastApplication()?.appliedZoom ?? targetZoom
       };
     } catch (error) {
       await handleError(error);
@@ -111,12 +112,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     getStatus: async () => {
       const detection = await helperClient.getCurrentWindowDisplay();
       const display = toDisplayIdentity(detection);
-      const configuredZoom = resolveZoom({ display, config: getAutoZoomConfig() });
+      const configuredZoom = clampZoomLevel(resolveZoom({ display, config: getAutoZoomConfig() }));
 
       return {
         display,
         zoom: commandZoomApplier.tracker.getLastApplication()?.appliedZoom
-          ?? Math.round(configuredZoom)
+          ?? configuredZoom
       };
     },
     onError: handleError
@@ -139,6 +140,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     { dispose: () => monitor.stop() },
     { dispose: () => helperClient.dispose() },
+    { dispose: () => disposeDisplayZoomToast() },
     statusBar
   );
   activeMonitor = monitor;
@@ -149,6 +151,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 export function deactivate(): void {
   activeMonitor?.stop();
   activeStatusBar?.dispose();
+  disposeDisplayZoomToast();
   activeMonitor = undefined;
   activeStatusBar = undefined;
 }

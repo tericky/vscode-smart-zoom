@@ -1,11 +1,15 @@
 import type { DisplayIdentity } from '../display/types';
-import { zoomLevelToPercent } from '../zoom/zoomFormat';
+import {
+  clampZoomLevel,
+  MAX_ZOOM_LEVEL,
+  MIN_ZOOM_LEVEL,
+  zoomLevelToPercent
+} from '../zoom/zoomFormat';
 
 /** Matches vscode.QuickPickItemKind.Separator without importing the runtime. */
 export const MENU_SEPARATOR_KIND = -1;
 
-export const MIN_ZOOM_LEVEL = -8;
-export const MAX_ZOOM_LEVEL = 8;
+export { clampZoomLevel, MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL };
 
 export type StatusMenuAction =
   | { kind: 'zoomDelta'; delta: number }
@@ -29,11 +33,6 @@ export interface StatusMenuItem {
 export const PRESET_ZOOM_LEVELS = [
   8, 7, 6, 5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5, -6, -7, -8
 ] as const;
-
-export function clampZoomLevel(zoomLevel: number): number {
-  const rounded = Math.round(zoomLevel);
-  return Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, rounded));
-}
 
 export function formatZoomLevelOption(zoomLevel: number): string {
   return `Zoom Level ${zoomLevel} : ${zoomLevelToPercent(zoomLevel)} %`;

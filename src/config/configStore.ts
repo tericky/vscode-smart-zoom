@@ -90,7 +90,6 @@ export function learnDisplayConfiguration(
 
   return {
     ...config,
-    defaultZoom: DEFAULT_ZOOM,
     displayProfiles: {
       ...config.displayProfiles,
       [displayId]: toDisplayProfile(display, roundedZoom)
@@ -106,7 +105,7 @@ export function getAutoZoomConfig(): AutoZoomConfig {
     enabled: configuration.get('enabled', DEFAULT_ENABLED),
     pollInterval: configuration.get('pollInterval', DEFAULT_POLL_INTERVAL),
     stabilityChecks: configuration.get('stabilityChecks', DEFAULT_STABILITY_CHECKS),
-    defaultZoom: DEFAULT_ZOOM,
+    defaultZoom: configuration.get('defaultZoom', DEFAULT_ZOOM),
     displayProfiles: configuration.get('displayProfiles', {}),
     zoomRules: configuration.get('zoomRules', [])
   };
