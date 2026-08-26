@@ -24,7 +24,12 @@ test('uses display profile before resolution rule', () => {
     config: {
       ...baseConfig,
       displayProfiles: {
-        'display-1': { zoom: 2 }
+        'display-1': {
+          width: 3840,
+          height: 2160,
+          scaleFactor: 2,
+          zoom: 2
+        }
       },
       zoomRules: [
         { width: 3840, height: 2160, scaleFactor: 2, zoom: 1 }

@@ -1,4 +1,8 @@
 export interface DisplayProfile {
+  name?: string;
+  width: number;
+  height: number;
+  scaleFactor: number;
   zoom: number;
 }
 
