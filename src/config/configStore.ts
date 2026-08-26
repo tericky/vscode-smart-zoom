@@ -4,6 +4,9 @@ import type { DisplayIdentity } from '../display/types';
 import { buildResolutionKey } from '../display/resolutionKey';
 
 const CONFIG_SECTION = 'autoZoom';
+const DEFAULT_ENABLED = true;
+const DEFAULT_POLL_INTERVAL = 150;
+const DEFAULT_STABILITY_CHECKS = 2;
 const DEFAULT_ZOOM = 0;
 
 type WorkspaceConfiguration = Vscode.WorkspaceConfiguration;
@@ -100,6 +103,9 @@ export function getAutoZoomConfig(): AutoZoomConfig {
   const configuration = getWorkspaceConfiguration();
 
   return {
+    enabled: configuration.get('enabled', DEFAULT_ENABLED),
+    pollInterval: configuration.get('pollInterval', DEFAULT_POLL_INTERVAL),
+    stabilityChecks: configuration.get('stabilityChecks', DEFAULT_STABILITY_CHECKS),
     defaultZoom: DEFAULT_ZOOM,
     displayProfiles: configuration.get('displayProfiles', {}),
     zoomRules: configuration.get('zoomRules', [])
