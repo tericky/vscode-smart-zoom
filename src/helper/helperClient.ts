@@ -10,6 +10,11 @@ export interface HelperClient {
     onError?: (error: unknown) => void
   ): Promise<void>;
   stopWatch?(): Promise<void>;
+  /**
+   * Spontaneous `{ ok:true, event }` lines from the native helper
+   * (for example macOS Space changes).
+   */
+  onHelperEvent?(listener: ((event: string) => void) | undefined): void;
   dispose?(): void;
 }
 
@@ -121,6 +126,7 @@ export class JsonLineHelperClient implements HelperClient {
   >();
   private watchListener: ((result: DetectorResult) => void) | undefined;
   private watchErrorListener: ((error: unknown) => void) | undefined;
+  private eventListener: ((event: string) => void) | undefined;
   private disposed = false;
   /** One-shot RPC ids that timed out; ignore the first late reply with that id. */
   private readonly ignoredRequestIds = new Set<string>();
@@ -146,6 +152,10 @@ export class JsonLineHelperClient implements HelperClient {
       }, true);
       return result as DetectorResult;
     });
+  }
+
+  public onHelperEvent(listener: ((event: string) => void) | undefined): void {
+    this.eventListener = listener;
   }
 
   public async startWatch(
@@ -188,6 +198,7 @@ export class JsonLineHelperClient implements HelperClient {
     this.disposed = true;
     this.watchListener = undefined;
     this.watchErrorListener = undefined;
+    this.eventListener = undefined;
     this.activeWatchRequestId = undefined;
     this.ignoredRequestIds.clear();
     for (const [requestId, pending] of this.pending) {
@@ -374,6 +385,11 @@ export class JsonLineHelperClient implements HelperClient {
       } catch (error) {
         pending.reject(error);
       }
+      return;
+    }
+
+    if (response.ok && typeof response.event === 'string') {
+      this.eventListener?.(response.event);
       return;
     }
 

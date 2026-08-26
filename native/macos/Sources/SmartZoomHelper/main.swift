@@ -99,9 +99,16 @@ private func processFamily(startingAt pid: Int32) -> [Int32] {
     return family
 }
 
-private func windowCandidates() -> [WindowCandidate] {
+private func windowCandidates(onScreenOnly: Bool) -> [WindowCandidate] {
+    var option: CGWindowListOption = .excludeDesktopElements
+    if onScreenOnly {
+        option.insert(.optionOnScreenOnly)
+    } else {
+        option.insert(.optionAll)
+    }
+
     guard let windowInfo = CGWindowListCopyWindowInfo(
-        [.optionOnScreenOnly, .excludeDesktopElements],
+        option,
         kCGNullWindowID
     ) as? [[String: Any]] else {
         return []
@@ -112,6 +119,8 @@ private func windowCandidates() -> [WindowCandidate] {
             let ownerPID = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
             let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue,
             layer == 0,
+            let windowID = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+            windowID > 0,
             let boundsDictionary = info[kCGWindowBounds as String] as? [String: Any],
             let bounds = CGRect(
                 dictionaryRepresentation: boundsDictionary as CFDictionary
@@ -127,7 +136,8 @@ private func windowCandidates() -> [WindowCandidate] {
             bounds: bounds,
             listOrder: listOrder,
             title: info[kCGWindowName as String] as? String,
-            ownerName: info[kCGWindowOwnerName as String] as? String
+            ownerName: info[kCGWindowOwnerName as String] as? String,
+            windowID: windowID
         )
     }
 }
@@ -172,6 +182,7 @@ private final class WatchState: @unchecked Sendable {
     let lock = NSLock()
     var request: HelperRequest?
     var lastDisplayID: String?
+    var lastOnScreen: Bool?
     var started = false
 }
 
@@ -185,7 +196,7 @@ private func resolve(_ request: HelperRequest) throws -> SuccessResponse {
     let family = processFamily(startingAt: pid)
     let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
     guard let window = selectWindow(
-        from: windowCandidates(),
+        from: windowCandidates(onScreenOnly: true),
         eligiblePIDs: family,
         frontmostPID: frontmostPID,
         titleHint: request.titleHint
@@ -239,12 +250,61 @@ private func writeJSON<T: Encodable>(_ value: T) {
     outputLock.unlock()
 }
 
+private func selectedWindow(
+    _ request: HelperRequest,
+    onScreenOnly: Bool
+) -> WindowCandidate? {
+    guard let pid = request.pid, pid > 0 else {
+        return nil
+    }
+
+    return selectWindow(
+        from: windowCandidates(onScreenOnly: onScreenOnly),
+        eligiblePIDs: processFamily(startingAt: pid),
+        frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+        titleHint: request.titleHint,
+        requireTitleHintMatch: !onScreenOnly
+    )
+}
+
+private func isRequestWindowOnScreen(_ request: HelperRequest) -> Bool? {
+    guard let ours = selectedWindow(request, onScreenOnly: false) else {
+        return nil
+    }
+
+    let onScreenIDs = Set(windowCandidates(onScreenOnly: true).map(\.windowID))
+    return onScreenIDs.contains(ours.windowID)
+}
+
+private func emitVisibilityIfChanged(_ request: HelperRequest) {
+    let onScreen = isRequestWindowOnScreen(request)
+
+    watchState.lock.lock()
+    let previous = watchState.lastOnScreen
+    watchState.lastOnScreen = onScreen
+    watchState.lock.unlock()
+
+    guard let event = visibilityTransition(previous: previous, current: onScreen) else {
+        return
+    }
+
+    writeJSON(EventResponse(event: event.rawValue, requestId: nil))
+}
+
 private func emitWatchSnapshot(force: Bool) {
     watchState.lock.lock()
     let request = watchState.request
     watchState.lock.unlock()
 
     guard let request else {
+        return
+    }
+
+    emitVisibilityIfChanged(request)
+
+    if isRequestWindowOnScreen(request) == false {
+        // Off-space windows are expected during Mission Control / Spaces.
+        // Do not spam window_not_found into the extension monitor.
         return
     }
 
@@ -301,6 +361,25 @@ private func ensureWatchLoop() {
     }
 }
 
+private func ensureSpaceChangeObserver() {
+    NSWorkspace.shared.notificationCenter.addObserver(
+        forName: NSWorkspace.activeSpaceDidChangeNotification,
+        object: nil,
+        queue: .main
+    ) { _ in
+        // Re-sample immediately; the 200ms watch loop would miss a fast swipe.
+        watchState.lock.lock()
+        let request = watchState.request
+        watchState.lock.unlock()
+
+        if let request {
+            emitVisibilityIfChanged(request)
+        }
+
+        writeJSON(EventResponse(event: "activeSpaceChanged", requestId: nil))
+    }
+}
+
 private func handleLine(_ input: String) {
     var requestId: String?
     do {
@@ -311,6 +390,7 @@ private func handleLine(_ input: String) {
             watchState.lock.lock()
             watchState.request = request
             watchState.lastDisplayID = nil
+            watchState.lastOnScreen = nil
             watchState.lock.unlock()
             ensureWatchLoop()
             emitWatchSnapshot(force: true)
@@ -318,6 +398,7 @@ private func handleLine(_ input: String) {
             watchState.lock.lock()
             watchState.request = nil
             watchState.lastDisplayID = nil
+            watchState.lastOnScreen = nil
             watchState.lock.unlock()
             writeJSON(EventResponse(event: "unwatched", requestId: request.requestId))
         default:
@@ -330,12 +411,17 @@ private func handleLine(_ input: String) {
     }
 }
 
-guard let firstInput = readLine() else {
-    writeJSON(ErrorResponse(error: HelperError.invalidRequest.rawValue))
+ensureSpaceChangeObserver()
+
+DispatchQueue.global(qos: .userInitiated).async {
+    while let input = readLine(strippingNewline: true) {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            continue
+        }
+        handleLine(trimmed)
+    }
     exit(EXIT_SUCCESS)
 }
 
-handleLine(firstInput)
-while let input = readLine() {
-    handleLine(input)
-}
+RunLoop.main.run()

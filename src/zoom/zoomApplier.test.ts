@@ -89,6 +89,52 @@ test('updates tracker only after all zoom commands complete', async () => {
   assert.equal(tracker.getLastApplication(), undefined);
 });
 
+test('force reapplies even when tracker already matches target', async () => {
+  const vscodeApi = new FakeVscodeZoomApi({
+    zoomPerWindow: true,
+    zoomLevel: 0
+  });
+  const tracker = new ZoomTracker();
+  const applier = new CommandZoomApplier({ vscodeApi, tracker });
+
+  await applier.applyZoomToCurrentWindow(1);
+  const commandsAfterFirst = vscodeApi.executedCommands.length;
+  await applier.applyZoomToCurrentWindow(1);
+  assert.equal(vscodeApi.executedCommands.length, commandsAfterFirst);
+
+  await applier.applyZoomToCurrentWindow(1, { force: true });
+  assert.ok(vscodeApi.executedCommands.length > commandsAfterFirst);
+});
+
+test('fromBaseline restore skips zoomReset', async () => {
+  const vscodeApi = new FakeVscodeZoomApi({
+    zoomPerWindow: true,
+    zoomLevel: 0
+  });
+  const tracker = new ZoomTracker();
+  const applier = new CommandZoomApplier({ vscodeApi, tracker });
+
+  await applier.applyZoomToCurrentWindow(1, { force: true, fromBaseline: true });
+
+  assert.deepEqual(vscodeApi.executedCommands, ['workbench.action.zoomIn']);
+  assert.equal(tracker.getLastApplication()?.appliedZoom, 1);
+});
+
+test('force fromBaseline still climbs when tracker already matches', async () => {
+  const vscodeApi = new FakeVscodeZoomApi({
+    zoomPerWindow: true,
+    zoomLevel: 0
+  });
+  const tracker = new ZoomTracker();
+  const applier = new CommandZoomApplier({ vscodeApi, tracker });
+
+  await applier.applyZoomToCurrentWindow(1);
+  vscodeApi.executedCommands.length = 0;
+  await applier.applyZoomToCurrentWindow(1, { force: true, fromBaseline: true });
+
+  assert.deepEqual(vscodeApi.executedCommands, ['workbench.action.zoomIn']);
+});
+
 test('skips command sequence when tracker already matches target', async () => {
   const vscodeApi = new FakeVscodeZoomApi({
     zoomPerWindow: true,

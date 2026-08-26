@@ -108,6 +108,41 @@ final class HelperCoreTests: XCTestCase {
         XCTAssertEqual(selected?.ownerPID, 100)
     }
 
+    func testSelectWindowCanRequireTitleHintMatch() {
+        let otherSpace = WindowCandidate(
+            ownerPID: 100,
+            bounds: CGRect(x: 0, y: 0, width: 1200, height: 800),
+            listOrder: 1,
+            title: "README.md — vscode-smart-zoom",
+            windowID: 11
+        )
+        let currentSpaceSibling = WindowCandidate(
+            ownerPID: 100,
+            bounds: CGRect(x: 1500, y: 100, width: 900, height: 700),
+            listOrder: 0,
+            title: "extension.ts — other-project",
+            windowID: 22
+        )
+
+        let required = selectWindow(
+            from: [otherSpace, currentSpaceSibling],
+            eligiblePIDs: [100],
+            frontmostPID: 100,
+            titleHint: "README.md — vscode-smart-zoom",
+            requireTitleHintMatch: true
+        )
+        XCTAssertEqual(required?.windowID, 11)
+
+        let missing = selectWindow(
+            from: [currentSpaceSibling],
+            eligiblePIDs: [100],
+            frontmostPID: 100,
+            titleHint: "README.md — vscode-smart-zoom",
+            requireTitleHintMatch: true
+        )
+        XCTAssertNil(missing)
+    }
+
     func testDisplayContainingWindowCenterReturnsMatchingDisplay() {
         let displays = [
             DisplayCandidate(id: 1, bounds: CGRect(x: 0, y: 0, width: 1920, height: 1080)),
@@ -145,5 +180,21 @@ final class HelperCoreTests: XCTestCase {
         )
 
         XCTAssertEqual(selected?.ownerPID, 999)
+    }
+
+    func testVisibilityTransitionEmitsHiddenAndVisibleOnce() {
+        XCTAssertNil(visibilityTransition(previous: nil, current: true))
+        XCTAssertNil(visibilityTransition(previous: nil, current: false))
+        XCTAssertEqual(
+            visibilityTransition(previous: true, current: false),
+            .becameHidden
+        )
+        XCTAssertEqual(
+            visibilityTransition(previous: false, current: true),
+            .becameVisible
+        )
+        XCTAssertNil(visibilityTransition(previous: true, current: true))
+        XCTAssertNil(visibilityTransition(previous: false, current: false))
+        XCTAssertNil(visibilityTransition(previous: true, current: nil))
     }
 }

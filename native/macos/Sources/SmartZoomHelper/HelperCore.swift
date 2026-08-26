@@ -24,20 +24,44 @@ struct WindowCandidate {
     let listOrder: Int
     let title: String?
     let ownerName: String?
+    let windowID: CGWindowID
 
     init(
         ownerPID: Int32,
         bounds: CGRect,
         listOrder: Int,
         title: String? = nil,
-        ownerName: String? = nil
+        ownerName: String? = nil,
+        windowID: CGWindowID = 0
     ) {
         self.ownerPID = ownerPID
         self.bounds = bounds
         self.listOrder = listOrder
         self.title = title
         self.ownerName = ownerName
+        self.windowID = windowID
     }
+}
+
+enum WindowVisibilityEvent: String, Equatable {
+    case becameHidden = "windowBecameHidden"
+    case becameVisible = "windowBecameVisible"
+}
+
+func visibilityTransition(previous: Bool?, current: Bool?) -> WindowVisibilityEvent? {
+    guard let current else {
+        return nil
+    }
+
+    if previous == true && current == false {
+        return .becameHidden
+    }
+
+    if previous == false && current == true {
+        return .becameVisible
+    }
+
+    return nil
 }
 
 struct DisplayCandidate {
@@ -73,7 +97,8 @@ func selectWindow(
     eligiblePIDs: [Int32],
     frontmostPID: Int32?,
     titleHint: String? = nil,
-    ownerNameHints: [String] = ["Cursor", "Code", "Visual Studio Code"]
+    ownerNameHints: [String] = ["Cursor", "Code", "Visual Studio Code"],
+    requireTitleHintMatch: Bool = false
 ) -> WindowCandidate? {
     let pidRanks = Dictionary(
         uniqueKeysWithValues: eligiblePIDs.enumerated().map { ($0.element, $0.offset) }
@@ -83,7 +108,7 @@ func selectWindow(
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
         .filter { !$0.isEmpty }
 
-    let eligibleWindows = windows.filter { window in
+    var eligibleWindows = windows.filter { window in
         guard window.bounds.width >= 50, window.bounds.height >= 50 else {
             return false
         }
@@ -94,6 +119,16 @@ func selectWindow(
 
         let owner = window.ownerName?.lowercased() ?? ""
         return normalizedOwnerHints.contains { owner.contains($0) }
+    }
+
+    if requireTitleHintMatch, let hint = normalizedTitleHint, !hint.isEmpty {
+        let titleMatches = eligibleWindows.filter {
+            $0.title?.localizedCaseInsensitiveContains(hint) ?? false
+        }
+        if titleMatches.isEmpty {
+            return nil
+        }
+        eligibleWindows = titleMatches
     }
 
     return eligibleWindows.min { lhs, rhs in

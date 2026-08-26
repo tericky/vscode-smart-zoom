@@ -13,6 +13,12 @@ import { AutoZoomStatus, AutoZoomStatusBar } from './ui/statusBar';
 import { showDisplayZoomToast, disposeDisplayZoomToast } from './ui/zoomToast';
 import { CommandZoomApplier } from './zoom/zoomApplier';
 import { clampZoomLevel } from './zoom/zoomFormat';
+import {
+  createSpaceRestoreState,
+  noteStableHome,
+  noteWindowAway,
+  noteWindowBack
+} from './zoom/spaceZoomRestore';
 
 let activeMonitor: WindowMonitor | undefined;
 let activeStatusBar: AutoZoomStatusBar | undefined;
@@ -42,6 +48,62 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let statusBar: AutoZoomStatusBar | undefined;
   let initialStatus: AutoZoomStatus | undefined;
   let waylandNoticeShown = false;
+  let lastAppliedZoom: number | undefined;
+  let spaceRestore = createSpaceRestoreState(vscode.env.appName);
+  let stableHomeTimer: NodeJS.Timeout | undefined;
+
+  const clearStableHomeTimer = (): void => {
+    if (stableHomeTimer !== undefined) {
+      clearTimeout(stableHomeTimer);
+      stableHomeTimer = undefined;
+    }
+  };
+
+  /**
+   * Cursor resets per-window zoom to the settings baseline (100%) on Spaces.
+   * zoomReset would flash 100%; climb from that baseline once per trip.
+   * force is required because ZoomTracker still thinks we are at 120%.
+   */
+  const restoreRememberedZoomFromBaseline = async (reason: string): Promise<void> => {
+    if (getAutoZoomConfig().enabled === false) {
+      return;
+    }
+    const zoom = lastAppliedZoom;
+    if (zoom === undefined || zoom === 0) {
+      return;
+    }
+    try {
+      await commandZoomApplier.applyZoomToCurrentWindow(zoom, {
+        force: true,
+        fromBaseline: true
+      });
+      lastAppliedZoom = zoom;
+      logger.info(`Restore zoom ${zoom} from baseline (${reason}).`);
+    } catch (error) {
+      logger.info(`Baseline restore failed (${reason}): ${formatError(error)}`);
+    }
+  };
+
+  const tryRestoreSpaceZoom = (reason: string): void => {
+    const result = noteWindowBack(spaceRestore);
+    spaceRestore = result.state;
+    if (!result.shouldRestore) {
+      return;
+    }
+    void restoreRememberedZoomFromBaseline(reason);
+  };
+
+  helperClient.onHelperEvent?.((event) => {
+    logger.info(`Helper event: ${event}`);
+    if (event === 'windowBecameHidden') {
+      clearStableHomeTimer();
+      spaceRestore = noteWindowAway(spaceRestore);
+      return;
+    }
+    if (event === 'windowBecameVisible') {
+      tryRestoreSpaceZoom('windowBecameVisible');
+    }
+  });
 
   const handleError = async (error: unknown): Promise<void> => {
     logger.info(`Smart Zoom operation failed: ${formatError(error)}`);
@@ -65,9 +127,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       display?: ReturnType<typeof toDisplayIdentity>,
       context?: { source?: 'auto' | 'manual' | 'startup' }
     ): Promise<void> => {
+      const nextZoom = clampZoomLevel(target);
+      // Space switches can make the helper resolve a display with no profile
+      // (zoom 0). Applying that overwrites the user's 120% and later Space
+      // restore then reapplies 0.
+      if (
+        context?.source === 'auto' &&
+        nextZoom === 0 &&
+        lastAppliedZoom !== undefined &&
+        lastAppliedZoom !== 0
+      ) {
+        logger.info(
+          `Skip auto zoom 0; keeping remembered zoom ${lastAppliedZoom}.`
+        );
+        return;
+      }
+
       await commandZoomApplier.applyZoomToCurrentWindow(target);
       const appliedZoom = commandZoomApplier.tracker.getLastApplication()?.appliedZoom
-        ?? Math.round(target);
+        ?? nextZoom;
+      if (!(context?.source === 'auto' && appliedZoom === 0 && lastAppliedZoom)) {
+        lastAppliedZoom = appliedZoom;
+      }
       if (display) {
         statusBar?.update({ display, zoom: appliedZoom });
       } else {
@@ -139,6 +220,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   context.subscriptions.push(
+    vscode.window.onDidChangeWindowState((state) => {
+      if (!state.focused) {
+        clearStableHomeTimer();
+        return;
+      }
+      tryRestoreSpaceZoom('focus');
+      clearStableHomeTimer();
+      stableHomeTimer = setTimeout(() => {
+        spaceRestore = noteStableHome(spaceRestore);
+        stableHomeTimer = undefined;
+      }, 1500);
+    }),
+    {
+      dispose: () => {
+        clearStableHomeTimer();
+        helperClient.onHelperEvent?.(undefined);
+      }
+    },
     { dispose: () => monitor.stop() },
     { dispose: () => helperClient.dispose() },
     { dispose: () => disposeDisplayZoomToast() },
@@ -146,7 +245,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   activeMonitor = monitor;
   activeStatusBar = statusBar;
-  logger.info('Smart Zoom activated.');
+  logger.info('Smart Zoom 0.0.8 activated.');
 }
 
 export function deactivate(): void {
