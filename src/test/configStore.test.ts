@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import type { AutoZoomConfig } from '../config/types';
+import type { SmartZoomConfig } from '../config/types';
 import type { DisplayIdentity } from '../display/types';
 import { learnDisplayConfiguration, upsertZoomRule } from '../config/configStore';
 
-const baseConfig: AutoZoomConfig = {
+const baseConfig: SmartZoomConfig = {
   defaultZoom: 0,
   displayProfiles: {},
   zoomRules: []

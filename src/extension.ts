@@ -2,14 +2,14 @@ import * as vscode from 'vscode';
 import { basename } from 'node:path';
 
 import { registerCommands, toDisplayIdentity } from './commands/registerCommands';
-import { getAutoZoomConfig } from './config/configStore';
+import { getSmartZoomConfig } from './config/configStore';
 import { resolveZoom } from './display/zoomResolver';
 import { JsonLineHelperClient, NativeHelperError } from './helper/helperClient';
 import { getHelperPath } from './helper/helperLocator';
 import { prepareHelperBinary } from './helper/prepareHelper';
 import { Logger } from './log/logger';
 import { WindowMonitor } from './monitor/windowMonitor';
-import { AutoZoomStatus, AutoZoomStatusBar } from './ui/statusBar';
+import { SmartZoomStatus, SmartZoomStatusBar } from './ui/statusBar';
 import { showDisplayZoomToast, disposeDisplayZoomToast } from './ui/zoomToast';
 import { CommandZoomApplier } from './zoom/zoomApplier';
 import { clampZoomLevel } from './zoom/zoomFormat';
@@ -21,13 +21,13 @@ import {
 } from './zoom/spaceZoomRestore';
 
 let activeMonitor: WindowMonitor | undefined;
-let activeStatusBar: AutoZoomStatusBar | undefined;
+let activeStatusBar: SmartZoomStatusBar | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new Logger();
   context.subscriptions.push(logger);
 
-  const initialConfig = getAutoZoomConfig();
+  const initialConfig = getSmartZoomConfig();
   const zoomPerWindow = vscode.workspace
     .getConfiguration('window')
     .get<boolean>('zoomPerWindow', true);
@@ -45,8 +45,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     getTitleHint: getBestEffortTitleHint
   });
   const commandZoomApplier = new CommandZoomApplier({ logger });
-  let statusBar: AutoZoomStatusBar | undefined;
-  let initialStatus: AutoZoomStatus | undefined;
+  let statusBar: SmartZoomStatusBar | undefined;
+  let initialStatus: SmartZoomStatus | undefined;
   let waylandNoticeShown = false;
   let lastAppliedZoom: number | undefined;
   let spaceRestore = createSpaceRestoreState(vscode.env.appName);
@@ -65,7 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
    * force is required because ZoomTracker still thinks we are at 120%.
    */
   const restoreRememberedZoomFromBaseline = async (reason: string): Promise<void> => {
-    if (getAutoZoomConfig().enabled === false) {
+    if (getSmartZoomConfig().enabled === false) {
       return;
     }
     const zoom = lastAppliedZoom;
@@ -138,7 +138,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         lastAppliedZoom !== 0
       ) {
         logger.info(
-          `Skip auto zoom 0; keeping remembered zoom ${lastAppliedZoom}.`
+          `Skip applying zoom 0; keeping remembered zoom ${lastAppliedZoom}.`
         );
         return;
       }
@@ -163,7 +163,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const monitor = new WindowMonitor({
     helperClient,
-    getConfig: getAutoZoomConfig,
+    getConfig: getSmartZoomConfig,
     resolveZoom,
     zoomApplier: statusAwareZoomApplier,
     logger,
@@ -190,11 +190,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   monitor.start();
 
-  statusBar = new AutoZoomStatusBar({
+  statusBar = new SmartZoomStatusBar({
     getStatus: async () => {
       const detection = await helperClient.getCurrentWindowDisplay();
       const display = toDisplayIdentity(detection);
-      const configuredZoom = clampZoomLevel(resolveZoom({ display, config: getAutoZoomConfig() }));
+      const configuredZoom = clampZoomLevel(resolveZoom({ display, config: getSmartZoomConfig() }));
 
       return {
         display,
@@ -214,7 +214,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     helperClient,
     zoomApplier: statusAwareZoomApplier,
     statusBar,
-    getConfig: getAutoZoomConfig,
+    getConfig: getSmartZoomConfig,
     logger,
     onError: handleError
   });

@@ -1,4 +1,4 @@
-import type { AutoZoomConfig } from '../config/types';
+import type { SmartZoomConfig } from '../config/types';
 import { toDisplayIdentity } from '../display/identity';
 import type { DisplayIdentity, DetectorResult } from '../display/types';
 import type { ResolveZoomInput } from '../display/zoomResolver';
@@ -23,7 +23,7 @@ export interface LoggerLike {
 
 export interface WindowMonitorOptions {
   helperClient: HelperClient;
-  getConfig: () => AutoZoomConfig;
+  getConfig: () => SmartZoomConfig;
   resolveZoom: (input: ResolveZoomInput) => number;
   zoomApplier: ZoomApplier;
   logger?: LoggerLike;
@@ -107,7 +107,7 @@ export function shouldApplyDisplayChange(
 
 export class WindowMonitor {
   private readonly helperClient: HelperClient;
-  private readonly getConfig: () => AutoZoomConfig;
+  private readonly getConfig: () => SmartZoomConfig;
   private readonly resolveZoom: (input: ResolveZoomInput) => number;
   private readonly zoomApplier: ZoomApplier;
   private readonly logger?: LoggerLike;
@@ -303,7 +303,7 @@ export class WindowMonitor {
         this.stabilityState = decision.nextState;
       }
     } catch (error) {
-      this.logger?.info(`Failed to apply auto zoom: ${formatError(error)}`);
+      this.logger?.info(`Failed to apply zoom: ${formatError(error)}`);
     } finally {
       this.applying = false;
       if (runId !== this.runId) {

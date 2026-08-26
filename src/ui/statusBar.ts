@@ -3,34 +3,34 @@ import * as vscode from 'vscode';
 import type { DisplayIdentity } from '../display/types';
 import { formatZoomPercent } from '../zoom/zoomFormat';
 
-export interface AutoZoomStatus {
+export interface SmartZoomStatus {
   display: DisplayIdentity;
   zoom: number;
 }
 
 export interface StatusBarOptions {
-  getStatus: () => Promise<AutoZoomStatus>;
+  getStatus: () => Promise<SmartZoomStatus>;
   onError: (error: unknown) => void | Promise<void>;
 }
 
-export class AutoZoomStatusBar implements vscode.Disposable {
+export class SmartZoomStatusBar implements vscode.Disposable {
   private readonly item: vscode.StatusBarItem;
-  private readonly getStatus: () => Promise<AutoZoomStatus>;
+  private readonly getStatus: () => Promise<SmartZoomStatus>;
   private readonly onError: (error: unknown) => void | Promise<void>;
-  private currentStatus: AutoZoomStatus | undefined;
+  private currentStatus: SmartZoomStatus | undefined;
 
   public constructor(options: StatusBarOptions) {
     this.getStatus = options.getStatus;
     this.onError = options.onError;
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    this.item.command = 'autoZoom.statusMenu';
+    this.item.command = 'smartZoom.statusMenu';
     this.item.name = 'Smart Zoom';
     this.item.tooltip = 'Smart Zoom — click to choose zoom size for this display';
     this.item.text = '$(zoom-in) Smart Zoom —%';
     this.item.show();
   }
 
-  public update(status: AutoZoomStatus): void {
+  public update(status: SmartZoomStatus): void {
     this.currentStatus = status;
     this.item.text = formatStatusText(status);
     this.item.tooltip = formatStatusTooltip(status);
@@ -48,7 +48,7 @@ export class AutoZoomStatusBar implements vscode.Disposable {
     this.item.text = `$(zoom-in) Smart Zoom ${formatZoomPercent(zoom)}`;
   }
 
-  public async refresh(): Promise<AutoZoomStatus> {
+  public async refresh(): Promise<SmartZoomStatus> {
     const status = await this.getStatus();
     this.update(status);
     return status;
@@ -68,7 +68,7 @@ export class AutoZoomStatusBar implements vscode.Disposable {
   }
 }
 
-export function formatStatusMessage(status: AutoZoomStatus): string {
+export function formatStatusMessage(status: SmartZoomStatus): string {
   return [
     `Display: ${status.display.name ?? 'Unknown'}`,
     `Resolution: ${status.display.width} × ${status.display.height}`,
@@ -78,7 +78,7 @@ export function formatStatusMessage(status: AutoZoomStatus): string {
   ].join('\n');
 }
 
-function formatStatusText(status: AutoZoomStatus): string {
+function formatStatusText(status: SmartZoomStatus): string {
   const displayLabel = shortDisplayName(status.display.name);
   const zoom = formatZoomPercent(status.zoom);
   if (displayLabel) {
@@ -88,7 +88,7 @@ function formatStatusText(status: AutoZoomStatus): string {
   return `$(zoom-in) Smart Zoom ${zoom}`;
 }
 
-function formatStatusTooltip(status: AutoZoomStatus): string {
+function formatStatusTooltip(status: SmartZoomStatus): string {
   return [
     formatStatusMessage(status),
     '',

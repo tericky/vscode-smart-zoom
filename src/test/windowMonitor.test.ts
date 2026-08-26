@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import type { AutoZoomConfig } from '../config/types';
+import type { SmartZoomConfig } from '../config/types';
 import type { DetectorResult, DisplayIdentity } from '../display/types';
 import {
   shouldApplyDisplayChange,
@@ -10,7 +10,7 @@ import {
   type PollScheduler
 } from '../monitor/windowMonitor';
 
-const baseConfig: AutoZoomConfig = {
+const baseConfig: SmartZoomConfig = {
   enabled: true,
   defaultZoom: 0,
   displayProfiles: {},

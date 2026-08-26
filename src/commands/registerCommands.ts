@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
 
 import { clearLearnedConfiguration, saveDisplayConfiguration } from '../config/configStore';
-import type { AutoZoomConfig } from '../config/types';
+import type { SmartZoomConfig } from '../config/types';
 import { toDisplayIdentity } from '../display/identity';
 import type { DisplayIdentity } from '../display/types';
 import { resolveZoom } from '../display/zoomResolver';
 import type { HelperClient } from '../helper/helperClient';
 import type { ZoomApplier } from '../monitor/windowMonitor';
-import { AutoZoomStatusBar, formatStatusMessage } from '../ui/statusBar';
+import { SmartZoomStatusBar, formatStatusMessage } from '../ui/statusBar';
 import { showStatusMenu } from '../ui/statusMenu';
 import {
   clampZoomLevel,
@@ -28,8 +28,8 @@ export interface RegisterCommandsOptions {
   context: vscode.ExtensionContext;
   helperClient: HelperClient;
   zoomApplier: ZoomApplier;
-  statusBar: AutoZoomStatusBar;
-  getConfig: () => AutoZoomConfig;
+  statusBar: SmartZoomStatusBar;
+  getConfig: () => SmartZoomConfig;
   logger: CommandLogger;
   onError: (error: unknown) => void | Promise<void>;
 }
@@ -69,7 +69,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     return { display, zoom };
   };
 
-  registerCommand(context, 'autoZoom.enable', async () => {
+  registerCommand(context, 'smartZoom.enable', async () => {
     try {
       await setEnabled(true);
       logger.info('Smart Zoom enabled.');
@@ -79,7 +79,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     }
   });
 
-  registerCommand(context, 'autoZoom.disable', async () => {
+  registerCommand(context, 'smartZoom.disable', async () => {
     try {
       await setEnabled(false);
       logger.info('Smart Zoom disabled.');
@@ -89,7 +89,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     }
   });
 
-  registerCommand(context, 'autoZoom.detectCurrentDisplay', async () => {
+  registerCommand(context, 'smartZoom.detectCurrentDisplay', async () => {
     try {
       const { display, zoom } = await resolveCurrentDisplayZoom();
       statusBar.update({ display, zoom });
@@ -99,15 +99,15 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     }
   });
 
-  registerCommand(context, 'autoZoom.configureCurrentDisplay', async () => {
+  registerCommand(context, 'smartZoom.configureCurrentDisplay', async () => {
     try {
-      await vscode.commands.executeCommand('autoZoom.statusMenu');
+      await vscode.commands.executeCommand('smartZoom.statusMenu');
     } catch (error) {
       await onError(error);
     }
   });
 
-  registerCommand(context, 'autoZoom.zoomInCurrentDisplay', async () => {
+  registerCommand(context, 'smartZoom.zoomInCurrentDisplay', async () => {
     try {
       const { display, zoom } = await resolveCurrentDisplayZoom();
       await applyZoom(display, zoom + 1, true);
@@ -116,7 +116,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     }
   });
 
-  registerCommand(context, 'autoZoom.zoomOutCurrentDisplay', async () => {
+  registerCommand(context, 'smartZoom.zoomOutCurrentDisplay', async () => {
     try {
       const { display, zoom } = await resolveCurrentDisplayZoom();
       await applyZoom(display, zoom - 1, true);
@@ -125,7 +125,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     }
   });
 
-  registerCommand(context, 'autoZoom.showStatus', async () => {
+  registerCommand(context, 'smartZoom.showStatus', async () => {
     logger.show();
     await statusBar.showStatus();
   });
@@ -162,7 +162,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     );
   };
 
-  registerCommand(context, 'autoZoom.clearAllSettings', async () => {
+  registerCommand(context, 'smartZoom.clearAllSettings', async () => {
     try {
       let display: DisplayIdentity | undefined;
       try {
@@ -176,7 +176,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     }
   });
 
-  registerCommand(context, 'autoZoom.statusMenu', async () => {
+  registerCommand(context, 'smartZoom.statusMenu', async () => {
     try {
       const { display, zoom } = await resolveCurrentDisplayZoom();
       statusBar.update({ display, zoom });
@@ -209,7 +209,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
           await vscode.window.showInformationMessage(formatStatusMessage({ display, zoom }));
           break;
         case 'detect':
-          await vscode.commands.executeCommand('autoZoom.detectCurrentDisplay');
+          await vscode.commands.executeCommand('smartZoom.detectCurrentDisplay');
           break;
         case 'clearLearned':
           await clearAllLearnedSettings(display);
@@ -237,7 +237,7 @@ function registerCommand(
 
 async function setEnabled(enabled: boolean): Promise<void> {
   await vscode.workspace
-    .getConfiguration('autoZoom')
+    .getConfiguration('smartZoom')
     .update('enabled', enabled, vscode.ConfigurationTarget.Global);
 }
 

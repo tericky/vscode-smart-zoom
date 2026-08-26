@@ -2,7 +2,7 @@
   "name": "vscode-smart-zoom",
   "displayName": "Smart Zoom",
   "description": "Automatically apply per-window zoom based on the current display",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "tericky",
   "author": "Tericky <tericky@gmail.com>",
   "license": "Apache-2.0",
@@ -30,29 +30,29 @@
     "configuration": {
       "title": "Smart Zoom",
       "properties": {
-        "autoZoom.enabled": {
+        "smartZoom.enabled": {
           "type": "boolean",
           "default": true
         },
-        "autoZoom.pollInterval": {
+        "smartZoom.pollInterval": {
           "type": "number",
           "default": 500,
           "minimum": 100,
           "description": "How often (ms) to check which display the window is on. Higher values use less CPU."
         },
-        "autoZoom.stabilityChecks": {
+        "smartZoom.stabilityChecks": {
           "type": "number",
           "default": 2
         },
-        "autoZoom.defaultZoom": {
+        "smartZoom.defaultZoom": {
           "type": "number",
           "default": 0
         },
-        "autoZoom.displayProfiles": {
+        "smartZoom.displayProfiles": {
           "type": "object",
           "default": {}
         },
-        "autoZoom.zoomRules": {
+        "smartZoom.zoomRules": {
           "type": "array",
           "default": []
         }
@@ -60,39 +60,39 @@
     },
     "commands": [
       {
-        "command": "autoZoom.enable",
+        "command": "smartZoom.enable",
         "title": "Smart Zoom: Enable"
       },
       {
-        "command": "autoZoom.disable",
+        "command": "smartZoom.disable",
         "title": "Smart Zoom: Disable"
       },
       {
-        "command": "autoZoom.detectCurrentDisplay",
+        "command": "smartZoom.detectCurrentDisplay",
         "title": "Smart Zoom: Detect Current Display"
       },
       {
-        "command": "autoZoom.configureCurrentDisplay",
+        "command": "smartZoom.configureCurrentDisplay",
         "title": "Smart Zoom: Configure Current Display (Menu)"
       },
       {
-        "command": "autoZoom.showStatus",
+        "command": "smartZoom.showStatus",
         "title": "Smart Zoom: Show Status"
       },
       {
-        "command": "autoZoom.statusMenu",
+        "command": "smartZoom.statusMenu",
         "title": "Smart Zoom: Status Menu"
       },
       {
-        "command": "autoZoom.zoomInCurrentDisplay",
+        "command": "smartZoom.zoomInCurrentDisplay",
         "title": "Smart Zoom: Zoom In Current Display"
       },
       {
-        "command": "autoZoom.zoomOutCurrentDisplay",
+        "command": "smartZoom.zoomOutCurrentDisplay",
         "title": "Smart Zoom: Zoom Out Current Display"
       },
       {
-        "command": "autoZoom.clearAllSettings",
+        "command": "smartZoom.clearAllSettings",
         "title": "Smart Zoom: Clear All Learned Settings"
       }
     ]

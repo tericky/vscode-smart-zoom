@@ -13,7 +13,7 @@ export interface ZoomRule {
   zoom: number;
 }
 
-export interface AutoZoomConfig {
+export interface SmartZoomConfig {
   enabled?: boolean;
   pollInterval?: number;
   stabilityChecks?: number;

@@ -1,9 +1,9 @@
 import type * as Vscode from 'vscode';
-import type { AutoZoomConfig, DisplayProfile, ZoomRule } from './types';
+import type { SmartZoomConfig, DisplayProfile, ZoomRule } from './types';
 import type { DisplayIdentity } from '../display/types';
 import { buildResolutionKey } from '../display/resolutionKey';
 
-const CONFIG_SECTION = 'autoZoom';
+const CONFIG_SECTION = 'smartZoom';
 const DEFAULT_ENABLED = true;
 const DEFAULT_POLL_INTERVAL = 500;
 const DEFAULT_STABILITY_CHECKS = 2;
@@ -81,10 +81,10 @@ export function upsertZoomRule(
 }
 
 export function learnDisplayConfiguration(
-  config: AutoZoomConfig,
+  config: SmartZoomConfig,
   display: DisplayIdentity,
   zoom: number
-): AutoZoomConfig {
+): SmartZoomConfig {
   const displayId = requireDisplayId(display);
   const roundedZoom = roundZoom(zoom);
 
@@ -98,7 +98,7 @@ export function learnDisplayConfiguration(
   };
 }
 
-export function getAutoZoomConfig(): AutoZoomConfig {
+export function getSmartZoomConfig(): SmartZoomConfig {
   const configuration = getWorkspaceConfiguration();
 
   return {
@@ -116,7 +116,7 @@ export async function saveDisplayConfiguration(
   zoom: number
 ): Promise<void> {
   const configuration = getWorkspaceConfiguration();
-  const nextConfig = learnDisplayConfiguration(getAutoZoomConfig(), display, zoom);
+  const nextConfig = learnDisplayConfiguration(getSmartZoomConfig(), display, zoom);
   const target = getConfigurationTarget();
 
   await configuration.update('displayProfiles', nextConfig.displayProfiles, target);

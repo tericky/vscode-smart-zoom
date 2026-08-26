@@ -1,10 +1,10 @@
-import type { AutoZoomConfig } from '../config/types';
+import type { SmartZoomConfig } from '../config/types';
 import type { DisplayIdentity } from './types';
 import { buildResolutionKey } from './resolutionKey';
 
 export interface ResolveZoomInput {
   display: DisplayIdentity;
-  config: AutoZoomConfig;
+  config: SmartZoomConfig;
 }
 
 export function resolveZoom(input: ResolveZoomInput): number {
