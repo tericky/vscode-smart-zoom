@@ -72,6 +72,18 @@
       {
         "command": "autoZoom.showStatus",
         "title": "Auto Zoom: Show Status"
+      },
+      {
+        "command": "autoZoom.statusMenu",
+        "title": "Auto Zoom: Status Menu"
+      },
+      {
+        "command": "autoZoom.zoomInCurrentDisplay",
+        "title": "Auto Zoom: Zoom In Current Display"
+      },
+      {
+        "command": "autoZoom.zoomOutCurrentDisplay",
+        "title": "Auto Zoom: Zoom Out Current Display"
       }
     ]
   },
