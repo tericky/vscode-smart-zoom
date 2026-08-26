@@ -245,7 +245,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   activeMonitor = monitor;
   activeStatusBar = statusBar;
-  logger.info('Smart Zoom 0.0.8 activated.');
+  const version = String(
+    (context.extension.packageJSON as { version?: unknown }).version ?? 'unknown'
+  );
+  logger.info(`Smart Zoom ${version} activated.`);
 }
 
 export function deactivate(): void {
