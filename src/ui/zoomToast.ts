@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import type { DisplayIdentity } from '../display/types';
 import { formatDisplayZoomToast, formatDisplayZoomToastDetail } from './zoomToastMessage';
 
-const toastDurationMs = 1700;
+const toastDurationMs = 700;
 
 let hudPanel: vscode.WebviewPanel | undefined;
 let hideTimer: NodeJS.Timeout | undefined;
@@ -24,7 +24,7 @@ export async function showDisplayZoomToast(input: {
   panel.webview.html = buildHudHtml(title, detail, toastDurationMs);
   panel.reveal(vscode.ViewColumn.Active, true);
 
-  scheduleAutoClose(toastDurationMs + 120);
+  scheduleAutoClose(toastDurationMs + 80);
 }
 
 function ensureHudPanel(): vscode.WebviewPanel {
@@ -85,7 +85,7 @@ function disposeHudPanel(): void {
 function buildHudHtml(title: string, detail: string, durationMs: number): string {
   const safeTitle = escapeHtml(title);
   const safeDetail = escapeHtml(detail);
-  const fadeOutAtMs = Math.max(400, durationMs - 320);
+  const fadeOutAtMs = Math.max(200, durationMs - 180);
 
   return `<!DOCTYPE html>
 <html lang="en">
