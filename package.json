@@ -1,0 +1,77 @@
+{
+  "name": "vscode-smart-zoom",
+  "displayName": "Smart Auto Zoom",
+  "description": "Automatically apply per-window zoom based on the current display",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Auto Zoom",
+      "properties": {
+        "autoZoom.enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "autoZoom.pollInterval": {
+          "type": "number",
+          "default": 150
+        },
+        "autoZoom.stabilityChecks": {
+          "type": "number",
+          "default": 2
+        },
+        "autoZoom.defaultZoom": {
+          "type": "number",
+          "default": 0
+        },
+        "autoZoom.displayProfiles": {
+          "type": "object",
+          "default": {}
+        },
+        "autoZoom.zoomRules": {
+          "type": "array",
+          "default": []
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "autoZoom.enable",
+        "title": "Auto Zoom: Enable"
+      },
+      {
+        "command": "autoZoom.disable",
+        "title": "Auto Zoom: Disable"
+      },
+      {
+        "command": "autoZoom.detectCurrentDisplay",
+        "title": "Auto Zoom: Detect Current Display"
+      },
+      {
+        "command": "autoZoom.configureCurrentDisplay",
+        "title": "Auto Zoom: Configure Current Display"
+      },
+      {
+        "command": "autoZoom.showStatus",
+        "title": "Auto Zoom: Show Status"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
