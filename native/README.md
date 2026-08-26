@@ -1,0 +1,61 @@
+# Native Helper Contract
+
+The extension talks to a short-lived native helper process. Each call starts the
+platform helper, writes one JSON request followed by a newline to stdin, and
+expects one JSON response followed by a newline on stdout.
+
+## Packaged Paths
+
+Helpers are resolved relative to the extension root:
+
+- macOS: `native/darwin/smart-zoom-helper`
+- Windows: `native/win32/smart-zoom-helper.exe`
+- Linux: `native/linux/smart-zoom-helper`
+
+## Request
+
+```json
+{ "op": "getCurrentWindowDisplay", "pid": 12345 }
+```
+
+Fields:
+
+- `op`: currently only `getCurrentWindowDisplay`.
+- `pid`: process id of the requesting VS Code extension host.
+
+## Success Response
+
+```json
+{
+  "ok": true,
+  "data": {
+    "window": { "x": 2500, "y": 100, "width": 1600, "height": 1000 },
+    "display": {
+      "id": "123456789",
+      "name": "DELL U2720Q",
+      "x": 1920,
+      "y": 0,
+      "width": 3840,
+      "height": 2160,
+      "scaleFactor": 2
+    }
+  }
+}
+```
+
+The helper must identify the VS Code window for the requesting process and
+return the display containing that window's center point.
+
+## Error Response
+
+```json
+{ "ok": false, "error": "wayland_unsupported" }
+```
+
+The `error` field must be a stable machine-readable string. The extension keeps
+the current zoom and must not crash when the helper reports an error.
+
+## Timing
+
+The extension expects the helper to respond within 200 to 500 ms. Helpers should
+avoid long-running discovery work in the request path.
