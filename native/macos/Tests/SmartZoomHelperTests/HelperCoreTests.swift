@@ -1,0 +1,80 @@
+import CoreGraphics
+import XCTest
+@testable import SmartZoomHelper
+
+final class HelperCoreTests: XCTestCase {
+    func testDecodeAcceptsSupportedRequest() throws {
+        let request = try decodeRequest(Data(#"{"op":"getCurrentWindowDisplay","pid":12345}"#.utf8))
+
+        XCTAssertEqual(request.op, "getCurrentWindowDisplay")
+        XCTAssertEqual(request.pid, 12345)
+    }
+
+    func testDecodeRejectsUnsupportedOperation() {
+        XCTAssertThrowsError(try decodeRequest(Data(#"{"op":"unknown","pid":12345}"#.utf8))) { error in
+            XCTAssertEqual(error as? HelperError, .unsupportedOperation)
+        }
+    }
+
+    func testDecodeRejectsNonPositivePID() {
+        XCTAssertThrowsError(
+            try decodeRequest(Data(#"{"op":"getCurrentWindowDisplay","pid":0}"#.utf8))
+        ) { error in
+            XCTAssertEqual(error as? HelperError, .invalidPID)
+        }
+    }
+
+    func testSelectWindowFavorsFrontmostEligibleOwner() {
+        let windows = [
+            WindowCandidate(
+                ownerPID: 100,
+                bounds: CGRect(x: 0, y: 0, width: 1200, height: 800),
+                listOrder: 1
+            ),
+            WindowCandidate(
+                ownerPID: 200,
+                bounds: CGRect(x: 1500, y: 100, width: 900, height: 700),
+                listOrder: 0
+            )
+        ]
+
+        let selected = selectWindow(
+            from: windows,
+            eligiblePIDs: [100, 200],
+            frontmostPID: 200
+        )
+
+        XCTAssertEqual(selected?.ownerPID, 200)
+    }
+
+    func testSelectWindowUsesFrontToBackOrderForSameOwner() {
+        let back = WindowCandidate(
+            ownerPID: 100,
+            bounds: CGRect(x: 0, y: 0, width: 1600, height: 1000),
+            listOrder: 2
+        )
+        let front = WindowCandidate(
+            ownerPID: 100,
+            bounds: CGRect(x: 100, y: 100, width: 900, height: 700),
+            listOrder: 0
+        )
+
+        let selected = selectWindow(
+            from: [back, front],
+            eligiblePIDs: [100],
+            frontmostPID: 100
+        )
+
+        XCTAssertEqual(selected?.bounds, front.bounds)
+    }
+
+    func testDisplayContainingWindowCenterReturnsMatchingDisplay() {
+        let displays = [
+            DisplayCandidate(id: 1, bounds: CGRect(x: 0, y: 0, width: 1920, height: 1080)),
+            DisplayCandidate(id: 2, bounds: CGRect(x: 1920, y: 0, width: 2560, height: 1440))
+        ]
+        let window = CGRect(x: 2200, y: 100, width: 1000, height: 800)
+
+        XCTAssertEqual(displayContainingWindowCenter(window, displays: displays)?.id, 2)
+    }
+}
