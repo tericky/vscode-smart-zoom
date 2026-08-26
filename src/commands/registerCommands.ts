@@ -6,11 +6,12 @@ import type { DisplayIdentity, DetectorResult } from '../display/types';
 import { resolveZoom } from '../display/zoomResolver';
 import type { HelperClient } from '../helper/helperClient';
 import type { ZoomApplier } from '../monitor/windowMonitor';
+import { AutoZoomStatusBar, formatStatusMessage } from '../ui/statusBar';
 import {
-  AutoZoomStatusBar,
-  formatStatusMessage,
-  formatZoom
-} from '../ui/statusBar';
+  formatZoomPercent,
+  parseZoomInput,
+  zoomLevelToPercent
+} from '../zoom/zoomFormat';
 
 export interface CommandLogger {
   info(message: string): void;
@@ -59,7 +60,9 @@ export function registerCommands(options: RegisterCommandsOptions): void {
     await saveDisplayConfiguration(display, normalized);
     await zoomApplier.applyZoomToCurrentWindow(normalized);
     statusBar.update({ display, zoom: normalized });
-    logger.info(`Saved zoom ${normalized} for display ${display.displayId ?? 'unknown'}.`);
+    logger.info(
+      `Saved zoom ${formatZoomPercent(normalized)} for display ${display.displayId ?? 'unknown'}.`
+    );
   };
 
   const resolveCurrentDisplayZoom = async (): Promise<{ display: DisplayIdentity; zoom: number }> => {
@@ -103,8 +106,9 @@ export function registerCommands(options: RegisterCommandsOptions): void {
       const { display, zoom: currentZoom } = await resolveCurrentDisplayZoom();
       const input = await vscode.window.showInputBox({
         title: 'Configure Current Display',
-        prompt: 'Enter a zoom level. Decimal values will be rounded to an integer.',
-        value: String(currentZoom),
+        prompt: 'Enter zoom as a percent (for example 100 or 120%).',
+        value: String(zoomLevelToPercent(currentZoom)),
+        placeHolder: '100',
         validateInput: validateZoomInput
       });
 
@@ -112,9 +116,16 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         return;
       }
 
-      const zoom = Math.round(Number(input.trim()));
+      const zoom = parseZoomInput(input);
+      if (zoom === undefined) {
+        await vscode.window.showErrorMessage('Enter a valid zoom percent.');
+        return;
+      }
+
       await applySavedZoom(display, zoom);
-      await vscode.window.showInformationMessage(`Zoom ${zoom} was saved and applied.`);
+      await vscode.window.showInformationMessage(
+        `${formatZoomPercent(zoom)} was saved and applied for this display.`
+      );
     } catch (error) {
       await onError(error);
     }
@@ -153,7 +164,7 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         buildStatusMenuItems({ display, zoom, enabled }),
         {
           title: 'Auto Zoom',
-          placeHolder: 'Adjust zoom for the current display',
+          placeHolder: 'Choose a zoom size for this display',
           matchOnDescription: true,
           matchOnDetail: true
         }
@@ -173,14 +184,20 @@ export function registerCommands(options: RegisterCommandsOptions): void {
         case 'customZoom': {
           const input = await vscode.window.showInputBox({
             title: 'Custom Zoom',
-            prompt: 'Enter a zoom level for the current display.',
-            value: String(zoom),
+            prompt: 'Enter zoom as a percent (for example 100 or 120%).',
+            value: String(zoomLevelToPercent(zoom)),
+            placeHolder: '100',
             validateInput: validateZoomInput
           });
           if (input === undefined) {
             return;
           }
-          await applySavedZoom(display, Math.round(Number(input.trim())));
+          const nextZoom = parseZoomInput(input);
+          if (nextZoom === undefined) {
+            await vscode.window.showErrorMessage('Enter a valid zoom percent.');
+            return;
+          }
+          await applySavedZoom(display, nextZoom);
           break;
         }
         case 'showStatus':
@@ -211,28 +228,29 @@ function buildStatusMenuItems(input: {
   const displayName = input.display.name ?? 'Unknown display';
   const items: StatusMenuItem[] = [
     {
-      label: `$(zoom-in) Zoom In`,
-      description: `${formatZoom(input.zoom)} → ${formatZoom(input.zoom + 1)}`,
+      label: '$(zoom-in) Larger',
+      description: `${formatZoomPercent(input.zoom)} → ${formatZoomPercent(input.zoom + 1)}`,
       detail: `Save and apply for ${displayName}`,
       action: { kind: 'zoomDelta', delta: 1 }
     },
     {
-      label: `$(zoom-out) Zoom Out`,
-      description: `${formatZoom(input.zoom)} → ${formatZoom(input.zoom - 1)}`,
+      label: '$(zoom-out) Smaller',
+      description: `${formatZoomPercent(input.zoom)} → ${formatZoomPercent(input.zoom - 1)}`,
       detail: `Save and apply for ${displayName}`,
       action: { kind: 'zoomDelta', delta: -1 }
     },
     {
-      label: '$(edit) Custom Zoom…',
-      description: `Current ${formatZoom(input.zoom)}`,
+      label: '$(edit) Custom size…',
+      description: `Current ${formatZoomPercent(input.zoom)}`,
       action: { kind: 'customZoom' }
     }
   ];
 
   for (const preset of presetZooms) {
+    const percent = formatZoomPercent(preset);
     items.push({
-      label: preset === input.zoom ? `$(check) Zoom ${formatZoom(preset)}` : `Zoom ${formatZoom(preset)}`,
-      description: preset === input.zoom ? 'Current' : undefined,
+      label: preset === input.zoom ? `$(check) ${percent}` : percent,
+      description: preset === input.zoom ? 'Current size' : undefined,
       detail: `Save and apply for ${displayName}`,
       action: { kind: 'setZoom', zoom: preset }
     });
@@ -240,17 +258,17 @@ function buildStatusMenuItems(input: {
 
   items.push(
     {
-      label: '$(info) Show Status',
+      label: '$(info) Show details',
       description: displayName,
       action: { kind: 'showStatus' }
     },
     {
-      label: '$(search) Detect Current Display',
+      label: '$(search) Detect current display',
       action: { kind: 'detect' }
     },
     {
-      label: input.enabled ? '$(circle-slash) Disable Auto Zoom' : '$(play) Enable Auto Zoom',
-      description: input.enabled ? 'Currently enabled' : 'Currently disabled',
+      label: input.enabled ? '$(circle-slash) Turn off Auto Zoom' : '$(play) Turn on Auto Zoom',
+      description: input.enabled ? 'Currently on' : 'Currently off',
       action: { kind: 'toggleEnabled' }
     }
   );
@@ -273,10 +291,8 @@ async function setEnabled(enabled: boolean): Promise<void> {
 }
 
 function validateZoomInput(value: string): string | undefined {
-  const parsed = Number(value.trim());
-
-  if (value.trim().length === 0 || !Number.isFinite(parsed)) {
-    return 'Enter a valid numeric zoom level.';
+  if (parseZoomInput(value) === undefined) {
+    return 'Enter a percent like 100 or 120%.';
   }
 
   return undefined;

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import type { DisplayIdentity } from '../display/types';
+import { formatZoomPercent } from '../zoom/zoomFormat';
 
 export interface AutoZoomStatus {
   display: DisplayIdentity;
@@ -25,7 +26,7 @@ export class AutoZoomStatusBar implements vscode.Disposable {
     this.item.command = 'autoZoom.statusMenu';
     this.item.name = 'Auto Zoom';
     this.item.tooltip = 'Click to adjust zoom for the current display';
-    this.item.text = '$(zoom-in) Zoom —';
+    this.item.text = '$(zoom-in) —%';
     this.item.show();
   }
 
@@ -48,7 +49,7 @@ export class AutoZoomStatusBar implements vscode.Disposable {
       return;
     }
 
-    this.item.text = `$(zoom-in) Zoom ${formatZoom(zoom)}`;
+    this.item.text = `$(zoom-in) ${formatZoomPercent(zoom)}`;
   }
 
   public async refresh(): Promise<AutoZoomStatus> {
@@ -71,27 +72,23 @@ export class AutoZoomStatusBar implements vscode.Disposable {
   }
 }
 
-export function formatZoom(zoom: number): string {
-  return Number.isInteger(zoom) ? String(zoom) : String(Number(zoom.toFixed(2)));
-}
-
 export function formatStatusMessage(status: AutoZoomStatus): string {
   return [
     `Display: ${status.display.name ?? 'Unknown'}`,
     `Resolution: ${status.display.width} × ${status.display.height}`,
     `Scale: ${status.display.scaleFactor}x`,
     `Display ID: ${status.display.displayId ?? 'Unknown'}`,
-    `Zoom: ${formatZoom(status.zoom)}`
+    `Zoom: ${formatZoomPercent(status.zoom)}`
   ].join('\n');
 }
 
 function formatStatusText(status: AutoZoomStatus): string {
   const displayLabel = shortDisplayName(status.display.name);
   if (displayLabel) {
-    return `$(zoom-in) Zoom ${formatZoom(status.zoom)} · ${displayLabel}`;
+    return `$(zoom-in) ${formatZoomPercent(status.zoom)} · ${displayLabel}`;
   }
 
-  return `$(zoom-in) Zoom ${formatZoom(status.zoom)}`;
+  return `$(zoom-in) ${formatZoomPercent(status.zoom)}`;
 }
 
 function formatStatusTooltip(status: AutoZoomStatus): string {
