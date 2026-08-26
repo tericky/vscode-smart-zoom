@@ -103,6 +103,8 @@ export class WindowMonitor {
   private consecutiveFailures = 0;
   private nextAttemptAt = 0;
   private lastLoggedError: string | undefined;
+  private mode: 'watch' | 'poll' | 'stopped' = 'stopped';
+  private applying = false;
 
   public constructor(options: WindowMonitorOptions) {
     this.helperClient = options.helperClient;
@@ -114,24 +116,45 @@ export class WindowMonitor {
   }
 
   public start(): void {
-    if (this.intervalHandle !== undefined) {
+    if (this.mode !== 'stopped') {
       return;
     }
 
-    const config = this.getConfig();
-    const pollInterval = normalizePositiveInteger(config.pollInterval, defaultPollInterval);
-    this.intervalHandle = this.scheduler.setInterval(() => {
-      void this.pollOnce();
-    }, pollInterval);
+    if (typeof this.helperClient.startWatch === 'function') {
+      this.mode = 'watch';
+      void this.helperClient.startWatch(
+        (detection) => {
+          void this.handleDetection(detection);
+        },
+        (error) => {
+          this.onHelperFailure(error);
+        }
+      ).then(() => {
+        this.logger?.info('Window monitor started in event/watch mode.');
+      }).catch((error: unknown) => {
+        this.logger?.info(
+          `Watch mode unavailable (${formatError(error)}); falling back to polling.`
+        );
+        this.mode = 'stopped';
+        this.startPolling();
+      });
+      return;
+    }
+
+    this.startPolling();
   }
 
   public stop(): void {
-    if (this.intervalHandle === undefined) {
-      return;
+    if (this.mode === 'watch') {
+      void this.helperClient.stopWatch?.();
     }
 
-    this.scheduler.clearInterval(this.intervalHandle);
-    this.intervalHandle = undefined;
+    if (this.intervalHandle !== undefined) {
+      this.scheduler.clearInterval(this.intervalHandle);
+      this.intervalHandle = undefined;
+    }
+
+    this.mode = 'stopped';
   }
 
   public seedCurrentDisplay(displayId: string): void {
@@ -160,19 +183,55 @@ export class WindowMonitor {
       }
 
       const detection = await this.helperClient.getCurrentWindowDisplay();
-      this.onHelperSuccess();
+      await this.handleDetection(detection);
+    } catch (error) {
+      this.onHelperFailure(error);
+    } finally {
+      this.polling = false;
+    }
+  }
 
-      const decision = shouldApplyDisplayChange(
-        this.stabilityState,
-        detection.display.id,
-        config.stabilityChecks
-      );
+  private startPolling(): void {
+    if (this.intervalHandle !== undefined) {
+      return;
+    }
 
-      if (!decision.shouldApply) {
-        this.stabilityState = decision.nextState;
-        return;
-      }
+    this.mode = 'poll';
+    const config = this.getConfig();
+    const pollInterval = normalizePositiveInteger(config.pollInterval, defaultPollInterval);
+    this.intervalHandle = this.scheduler.setInterval(() => {
+      void this.pollOnce();
+    }, pollInterval);
+    this.logger?.info(`Window monitor started in poll mode (${pollInterval}ms).`);
+  }
 
+  private async handleDetection(detection: DetectorResult): Promise<void> {
+    if (this.applying) {
+      return;
+    }
+
+    const config = this.getConfig();
+    if (config.enabled === false) {
+      return;
+    }
+
+    this.onHelperSuccess();
+
+    // Watch events already fire only when display id changes; skip multi-poll stability.
+    const stabilityChecks = this.mode === 'watch' ? 1 : config.stabilityChecks;
+    const decision = shouldApplyDisplayChange(
+      this.stabilityState,
+      detection.display.id,
+      stabilityChecks
+    );
+
+    if (!decision.shouldApply) {
+      this.stabilityState = decision.nextState;
+      return;
+    }
+
+    this.applying = true;
+    try {
       const display = toDisplayIdentity(detection);
       const targetZoom = this.resolveZoom({ display, config });
       await this.zoomApplier.applyZoomToCurrentWindow(targetZoom, display);
@@ -180,7 +239,7 @@ export class WindowMonitor {
     } catch (error) {
       this.onHelperFailure(error);
     } finally {
-      this.polling = false;
+      this.applying = false;
     }
   }
 
@@ -202,7 +261,6 @@ export class WindowMonitor {
     );
     this.nextAttemptAt = Date.now() + backoffMs;
 
-    // Log the first failure and later only when the error text changes.
     if (this.lastLoggedError !== message) {
       this.lastLoggedError = message;
       this.logger?.info(

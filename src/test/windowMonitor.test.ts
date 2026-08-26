@@ -73,6 +73,63 @@ test('start uses default polling interval and stop clears the timer', () => {
   assert.deepEqual(scheduler.clearedHandles, [scheduler.intervals[0].handle]);
 });
 
+test('start prefers watch mode when helper supports startWatch', async () => {
+  const helper = new WatchCapableHelper();
+  const zoomApplier = new RecordingZoomApplier();
+  const logger = new RecordingLogger();
+  const monitor = new WindowMonitor({
+    helperClient: helper,
+    getConfig: () => ({
+      ...baseConfig,
+      displayProfiles: {
+        'display-b': {
+          width: 1920,
+          height: 1080,
+          scaleFactor: 1,
+          zoom: 1
+        }
+      }
+    }),
+    resolveZoom: ({ config, display }) => config.displayProfiles[display.displayId ?? '']?.zoom ?? 0,
+    zoomApplier,
+    logger,
+    scheduler: new FakeScheduler()
+  });
+
+  monitor.seedCurrentDisplay('display-a');
+  monitor.start();
+  await helper.started;
+  assert.equal(helper.watchStarted, true);
+
+  helper.emit(createDetectorResult('display-b'));
+  await waitFor(() => zoomApplier.appliedZooms.length === 1);
+  assert.deepEqual(zoomApplier.appliedZooms, [1]);
+  assert.match(logger.messages.join('\n'), /event\/watch mode/);
+
+  monitor.stop();
+  assert.equal(helper.watchStopped, true);
+});
+
+test('watch failure falls back to polling', async () => {
+  const scheduler = new FakeScheduler();
+  const helper = new WatchCapableHelper({ failStart: true });
+  const logger = new RecordingLogger();
+  const monitor = new WindowMonitor({
+    helperClient: helper,
+    getConfig: () => baseConfig,
+    resolveZoom: () => 0,
+    zoomApplier: new RecordingZoomApplier(),
+    logger,
+    scheduler
+  });
+
+  monitor.start();
+  await helper.started;
+  await waitFor(() => scheduler.intervals.length === 1);
+  assert.equal(scheduler.intervals[0].delayMs, 500);
+  assert.match(logger.messages.join('\n'), /falling back to polling/);
+});
+
 test('applies resolved zoom after stable display detection only once for unchanged display', async () => {
   const helper = new SequenceHelper([
     createDetectorResult('display-a'),
@@ -179,6 +236,56 @@ class SequenceHelper {
     }
 
     return result;
+  }
+}
+
+class WatchCapableHelper {
+  public watchStarted = false;
+  public watchStopped = false;
+  public readonly started: Promise<void>;
+  private readonly failStart: boolean;
+  private markStarted!: () => void;
+  private onChange: ((result: DetectorResult) => void) | undefined;
+
+  public constructor(options: { failStart?: boolean } = {}) {
+    this.failStart = options.failStart === true;
+    this.started = new Promise((resolve) => {
+      this.markStarted = resolve;
+    });
+  }
+
+  public async getCurrentWindowDisplay(): Promise<DetectorResult> {
+    throw new Error('getCurrentWindowDisplay should not be used in watch mode tests.');
+  }
+
+  public async startWatch(
+    onChange: (result: DetectorResult) => void
+  ): Promise<void> {
+    this.watchStarted = true;
+    this.onChange = onChange;
+    this.markStarted();
+    if (this.failStart) {
+      throw new Error('unsupported_operation');
+    }
+  }
+
+  public async stopWatch(): Promise<void> {
+    this.watchStopped = true;
+    this.onChange = undefined;
+  }
+
+  public emit(result: DetectorResult): void {
+    this.onChange?.(result);
+  }
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error('Timed out waiting for condition.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
 

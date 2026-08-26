@@ -13,6 +13,19 @@ final class HelperCoreTests: XCTestCase {
         XCTAssertEqual(request.titleHint, "README.md")
     }
 
+    func testDecodeAcceptsWatchAndUnwatch() throws {
+        let watch = try decodeRequest(
+            Data(#"{"op":"watch","pid":12345,"intervalMs":200,"requestId":"r1"}"#.utf8)
+        )
+        XCTAssertEqual(watch.op, "watch")
+        XCTAssertEqual(watch.intervalMs, 200)
+        XCTAssertEqual(watch.requestId, "r1")
+
+        let unwatch = try decodeRequest(Data(#"{"op":"unwatch","requestId":"r2"}"#.utf8))
+        XCTAssertEqual(unwatch.op, "unwatch")
+        XCTAssertEqual(unwatch.requestId, "r2")
+    }
+
     func testDecodeRejectsUnsupportedOperation() {
         XCTAssertThrowsError(try decodeRequest(Data(#"{"op":"unknown","pid":12345}"#.utf8))) { error in
             XCTAssertEqual(error as? HelperError, .unsupportedOperation)

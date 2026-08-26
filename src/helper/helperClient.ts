@@ -1,9 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptionsWithoutStdio } from 'node:child_process';
 
 import type { DetectorResult } from '../display/types';
 
 export interface HelperClient {
   getCurrentWindowDisplay(): Promise<DetectorResult>;
+  startWatch?(
+    onChange: (result: DetectorResult) => void,
+    onError?: (error: unknown) => void
+  ): Promise<void>;
+  stopWatch?(): Promise<void>;
   dispose?(): void;
 }
 
@@ -12,6 +18,7 @@ export interface HelperClientOptions {
   timeoutMs?: number;
   spawnProcess?: SpawnProcess;
   getTitleHint?: () => string | undefined;
+  watchIntervalMs?: number;
 }
 
 export type HelperErrorCode =
@@ -28,14 +35,17 @@ export type SpawnProcess = (
 ) => ChildProcessWithoutNullStreams;
 
 interface HelperRequest {
-  op: 'getCurrentWindowDisplay';
-  pid: number;
+  op: 'getCurrentWindowDisplay' | 'watch' | 'unwatch';
+  pid?: number;
   titleHint?: string;
+  intervalMs?: number;
+  requestId?: string;
 }
 
 const defaultTimeoutMs = 1500;
 const minTimeoutMs = 200;
 const maxTimeoutMs = 5000;
+const defaultWatchIntervalMs = 200;
 
 export class HelperClientError extends Error {
   public readonly code: HelperErrorCode;
@@ -85,55 +95,92 @@ export class NativeHelperError extends HelperClientError {
   }
 }
 
-/**
- * Keeps one helper process alive and speaks JSON-lines over stdin/stdout.
- * Spawning once avoids the cost of launching a native process every poll.
- */
 export class JsonLineHelperClient implements HelperClient {
   private readonly helperPath: string;
   private readonly pid: number;
   private readonly timeoutMs: number;
+  private readonly watchIntervalMs: number;
   private readonly spawnProcess: SpawnProcess;
   private readonly getTitleHint?: () => string | undefined;
   private child: ChildProcessWithoutNullStreams | undefined;
   private stdoutBuffer = '';
   private stderrBuffer = '';
   private queue: Promise<void> = Promise.resolve();
-  private pending:
-    | {
-        resolve: (value: DetectorResult) => void;
-        reject: (error: unknown) => void;
-        timeout: NodeJS.Timeout;
-      }
-    | undefined;
+  private readonly pending = new Map<
+    string,
+    {
+      resolve: (value: DetectorResult | void) => void;
+      reject: (error: unknown) => void;
+      timeout: NodeJS.Timeout;
+      expectData: boolean;
+    }
+  >();
+  private watchListener: ((result: DetectorResult) => void) | undefined;
+  private watchErrorListener: ((error: unknown) => void) | undefined;
   private disposed = false;
 
   public constructor(helperPath: string, options: HelperClientOptions = {}) {
     this.helperPath = helperPath;
     this.pid = options.pid ?? process.pid;
     this.timeoutMs = normalizeTimeout(options.timeoutMs ?? defaultTimeoutMs);
+    this.watchIntervalMs = options.watchIntervalMs ?? defaultWatchIntervalMs;
     this.spawnProcess = options.spawnProcess ?? spawn;
     this.getTitleHint = options.getTitleHint;
   }
 
   public getCurrentWindowDisplay(): Promise<DetectorResult> {
     const titleHint = this.getTitleHint?.()?.trim();
-    const request: HelperRequest = {
-      op: 'getCurrentWindowDisplay',
-      pid: this.pid,
-      ...(titleHint ? { titleHint } : {})
-    };
+    return this.enqueue(async () => {
+      const result = await this.sendRequest({
+        op: 'getCurrentWindowDisplay',
+        pid: this.pid,
+        ...(titleHint ? { titleHint } : {})
+      }, true);
+      return result as DetectorResult;
+    });
+  }
 
-    return this.enqueue(() => this.callHelper(request));
+  public async startWatch(
+    onChange: (result: DetectorResult) => void,
+    onError?: (error: unknown) => void
+  ): Promise<void> {
+    this.watchListener = onChange;
+    this.watchErrorListener = onError;
+    const titleHint = this.getTitleHint?.()?.trim();
+    await this.enqueue(async () => {
+      const first = await this.sendRequest({
+        op: 'watch',
+        pid: this.pid,
+        intervalMs: this.watchIntervalMs,
+        ...(titleHint ? { titleHint } : {})
+      }, true);
+      if (first) {
+        onChange(first as DetectorResult);
+      }
+    });
+  }
+
+  public async stopWatch(): Promise<void> {
+    this.watchListener = undefined;
+    this.watchErrorListener = undefined;
+    await this.enqueue(async () => {
+      await this.sendRequest({ op: 'unwatch' }, false);
+    });
   }
 
   public dispose(): void {
     this.disposed = true;
-    this.rejectPending(new HelperClientError('helper_error', 'Native helper client was disposed.'));
+    this.watchListener = undefined;
+    this.watchErrorListener = undefined;
+    for (const [requestId, pending] of this.pending) {
+      clearTimeout(pending.timeout);
+      pending.reject(new HelperClientError('helper_error', 'Native helper client was disposed.'));
+      this.pending.delete(requestId);
+    }
     this.killChild();
   }
 
-  private enqueue(operation: () => Promise<DetectorResult>): Promise<DetectorResult> {
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const run = this.queue.then(operation, operation);
     this.queue = run.then(
       () => undefined,
@@ -142,12 +189,12 @@ export class JsonLineHelperClient implements HelperClient {
     return run;
   }
 
-  private callHelper(request: HelperRequest): Promise<DetectorResult> {
+  private sendRequest(request: Omit<HelperRequest, 'requestId'>, expectData: boolean): Promise<DetectorResult | void> {
     if (this.disposed) {
       return Promise.reject(new HelperClientError('helper_error', 'Native helper client was disposed.'));
     }
 
-    return new Promise<DetectorResult>((resolve, reject) => {
+    return new Promise<DetectorResult | void>((resolve, reject) => {
       try {
         this.ensureChild();
       } catch (error) {
@@ -161,17 +208,21 @@ export class JsonLineHelperClient implements HelperClient {
         return;
       }
 
+      const requestId = randomUUID();
       const timeout = setTimeout(() => {
-        this.rejectPending(new HelperTimeoutError(this.timeoutMs));
-        this.killChild();
+        this.pending.delete(requestId);
+        reject(new HelperTimeoutError(this.timeoutMs));
+        // Do not kill the whole helper on one timeout; watch may still be useful.
       }, this.timeoutMs);
 
-      this.pending = { resolve, reject, timeout };
+      this.pending.set(requestId, { resolve, reject, timeout, expectData });
 
       try {
-        child.stdin.write(`${JSON.stringify(request)}\n`, 'utf8');
+        child.stdin.write(`${JSON.stringify({ ...request, requestId })}\n`, 'utf8');
       } catch (error) {
-        this.rejectPending(
+        clearTimeout(timeout);
+        this.pending.delete(requestId);
+        reject(
           new HelperClientError(
             'helper_error',
             error instanceof Error ? error.message : String(error)
@@ -202,13 +253,11 @@ export class JsonLineHelperClient implements HelperClient {
       this.stderrBuffer += chunk;
     });
     child.on('error', (error) => {
-      this.rejectPending(new HelperClientError('helper_error', error.message));
+      this.failAllPending(new HelperClientError('helper_error', error.message));
       this.child = undefined;
     });
     child.on('close', (exitCode, signal) => {
-      if (this.pending) {
-        this.rejectPending(new HelperProcessError(exitCode, signal, this.stderrBuffer.trim()));
-      }
+      this.failAllPending(new HelperProcessError(exitCode, signal, this.stderrBuffer.trim()));
       this.child = undefined;
     });
   }
@@ -226,31 +275,102 @@ export class JsonLineHelperClient implements HelperClient {
         continue;
       }
 
-      const pending = this.pending;
-      if (!pending) {
-        continue;
-      }
-
-      this.pending = undefined;
-      clearTimeout(pending.timeout);
-
-      try {
-        pending.resolve(parseHelperOutput(line));
-      } catch (error) {
-        pending.reject(error);
-      }
+      this.dispatchLine(line);
     }
   }
 
-  private rejectPending(error: unknown): void {
-    const pending = this.pending;
-    if (!pending) {
+  private dispatchLine(line: string): void {
+    let response: unknown;
+    try {
+      response = JSON.parse(line);
+    } catch (error) {
+      this.watchErrorListener?.(
+        new HelperProtocolError(`Native helper returned invalid JSON: ${String(error)}.`)
+      );
       return;
     }
 
-    this.pending = undefined;
-    clearTimeout(pending.timeout);
-    pending.reject(error);
+    if (!isRecord(response) || typeof response.ok !== 'boolean') {
+      this.watchErrorListener?.(
+        new HelperProtocolError('Native helper response must include a boolean ok field.')
+      );
+      return;
+    }
+
+    const requestId = typeof response.requestId === 'string' ? response.requestId : undefined;
+    const pending = this.takePending(requestId);
+    if (pending) {
+      clearTimeout(pending.timeout);
+
+      try {
+        if (!response.ok) {
+          if (typeof response.error !== 'string' || response.error.length === 0) {
+            throw new HelperProtocolError('Native helper error response must include a non-empty error field.');
+          }
+          throw new NativeHelperError(response.error);
+        }
+
+        if (typeof response.event === 'string') {
+          pending.resolve();
+          return;
+        }
+
+        if (!pending.expectData) {
+          pending.resolve();
+          return;
+        }
+
+        if (!isDetectorResult(response.data)) {
+          throw new HelperProtocolError('Native helper success response includes invalid detector data.');
+        }
+
+        pending.resolve(response.data);
+      } catch (error) {
+        pending.reject(error);
+      }
+      return;
+    }
+
+    // Spontaneous watch update (display change push).
+    if (response.ok && isDetectorResult(response.data)) {
+      this.watchListener?.(response.data);
+      return;
+    }
+
+    if (!response.ok && typeof response.error === 'string') {
+      this.watchErrorListener?.(new NativeHelperError(response.error));
+    }
+  }
+
+  private takePending(requestId: string | undefined): {
+    resolve: (value: DetectorResult | void) => void;
+    reject: (error: unknown) => void;
+    timeout: NodeJS.Timeout;
+    expectData: boolean;
+  } | undefined {
+    if (requestId && this.pending.has(requestId)) {
+      const pending = this.pending.get(requestId);
+      this.pending.delete(requestId);
+      return pending;
+    }
+
+    // Older helpers may omit requestId; correlate when exactly one request is in flight.
+    if (!requestId && this.pending.size === 1) {
+      const onlyId = this.pending.keys().next().value as string;
+      const pending = this.pending.get(onlyId);
+      this.pending.delete(onlyId);
+      return pending;
+    }
+
+    return undefined;
+  }
+
+  private failAllPending(error: unknown): void {
+    for (const [requestId, pending] of this.pending) {
+      clearTimeout(pending.timeout);
+      pending.reject(error);
+      this.pending.delete(requestId);
+    }
   }
 
   private killChild(): void {
@@ -277,39 +397,6 @@ function normalizeTimeout(timeoutMs: number): number {
   }
 
   return timeoutMs;
-}
-
-export function parseHelperOutput(output: string): DetectorResult {
-  const line = output.split(/\r?\n/).find((entry) => entry.trim().length > 0);
-
-  if (!line) {
-    throw new HelperProtocolError('Native helper returned no JSON output.');
-  }
-
-  let response: unknown;
-  try {
-    response = JSON.parse(line);
-  } catch (error) {
-    throw new HelperProtocolError(`Native helper returned invalid JSON: ${String(error)}.`);
-  }
-
-  if (!isRecord(response) || typeof response.ok !== 'boolean') {
-    throw new HelperProtocolError('Native helper response must include a boolean ok field.');
-  }
-
-  if (!response.ok) {
-    if (typeof response.error !== 'string' || response.error.length === 0) {
-      throw new HelperProtocolError('Native helper error response must include a non-empty error field.');
-    }
-
-    throw new NativeHelperError(response.error);
-  }
-
-  if (!isDetectorResult(response.data)) {
-    throw new HelperProtocolError('Native helper success response includes invalid detector data.');
-  }
-
-  return response.data;
 }
 
 function isDetectorResult(value: unknown): value is DetectorResult {

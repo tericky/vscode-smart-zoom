@@ -3,8 +3,10 @@ import Foundation
 
 struct HelperRequest: Decodable {
     let op: String
-    let pid: Int32
+    let pid: Int32?
     let titleHint: String?
+    let intervalMs: Int?
+    let requestId: String?
 }
 
 enum HelperError: String, Error {
@@ -52,11 +54,15 @@ func decodeRequest(_ data: Data) throws -> HelperRequest {
         throw HelperError.invalidRequest
     }
 
-    guard request.op == "getCurrentWindowDisplay" else {
+    switch request.op {
+    case "getCurrentWindowDisplay", "watch":
+        guard let pid = request.pid, pid > 0 else {
+            throw HelperError.invalidPID
+        }
+    case "unwatch":
+        break
+    default:
         throw HelperError.unsupportedOperation
-    }
-    guard request.pid > 0 else {
-        throw HelperError.invalidPID
     }
 
     return request
@@ -132,7 +138,6 @@ func displayContainingWindowCenter(
         return exact
     }
 
-    // Fallback: nearest display by center distance (handles edge/fullscreen quirks).
     return displays.min { lhs, rhs in
         distanceSquared(center, lhs.bounds) < distanceSquared(center, rhs.bounds)
     }

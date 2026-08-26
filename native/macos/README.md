@@ -45,6 +45,13 @@ display UUIDs, not transient display indexes.
 Depending on the macOS privacy configuration, the host editor may need Screen
 Recording permission to inspect window metadata.
 
+## Watch mode
+
+The helper also supports `watch` / `unwatch`. After `watch`, it emits an
+immediate snapshot, then additional JSON success lines only when the detected
+display id changes (background interval + display reconfiguration callbacks).
+True OS window-move Accessibility events are not required for this MVP.
+
 ## Manual GUI verification
 
 1. Open Code or Cursor with the extension host running.

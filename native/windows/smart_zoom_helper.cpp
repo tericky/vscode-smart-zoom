@@ -22,6 +22,7 @@ struct Request {
     std::string operation;
     std::int64_t pid = 0;
     std::string titleHint;
+    std::string requestId;
 };
 
 class RequestParser {
@@ -37,6 +38,7 @@ public:
         bool hasOperation = false;
         bool hasPid = false;
         bool hasTitleHint = false;
+        bool hasRequestId = false;
         skipWhitespace();
         if (consume('}')) {
             return false;
@@ -68,6 +70,11 @@ public:
                     return false;
                 }
                 hasTitleHint = true;
+            } else if (key == "requestId") {
+                if (hasRequestId || !parseString(request.requestId)) {
+                    return false;
+                }
+                hasRequestId = true;
             } else if (!skipValue(0)) {
                 return false;
             }
@@ -83,7 +90,14 @@ public:
         }
 
         skipWhitespace();
-        return position_ == input_.size() && hasOperation && hasPid;
+        if (position_ != input_.size() || !hasOperation) {
+            return false;
+        }
+        // unwatch does not require pid; detection ops do.
+        if (request.operation == "unwatch") {
+            return true;
+        }
+        return hasPid;
     }
 
 private:
@@ -504,8 +518,20 @@ bool caseInsensitiveContains(std::wstring_view value, std::wstring_view needle) 
     return false;
 }
 
-void writeError(std::string_view error) {
-    std::cout << "{\"ok\":false,\"error\":\"" << jsonEscape(error) << "\"}\n";
+void writeError(std::string_view error, std::string_view requestId = {}) {
+    std::cout << "{\"ok\":false,\"error\":\"" << jsonEscape(error) << "\"";
+    if (!requestId.empty()) {
+        std::cout << ",\"requestId\":\"" << jsonEscape(requestId) << "\"";
+    }
+    std::cout << "}\n";
+}
+
+void writeEvent(std::string_view event, std::string_view requestId = {}) {
+    std::cout << "{\"ok\":true,\"event\":\"" << jsonEscape(event) << "\"";
+    if (!requestId.empty()) {
+        std::cout << ",\"requestId\":\"" << jsonEscape(requestId) << "\"";
+    }
+    std::cout << "}\n";
 }
 
 void enablePerMonitorDpiAwareness() {
@@ -745,11 +771,12 @@ bool displayForWindow(const RECT& window, DisplayDetails& result) {
 
 void writeSuccess(
     const WindowCandidate& window,
-    const DisplayDetails& display) {
+    const DisplayDetails& display,
+    std::string_view requestId = {}) {
     const std::string id = wideToUtf8(display.id);
     std::string name = wideToUtf8(display.name);
     if (id.empty()) {
-        writeError("display_not_found");
+        writeError("display_not_found", requestId);
         return;
     }
     if (name.empty()) {
@@ -770,7 +797,11 @@ void writeSuccess(
         << ",\"width\":" << display.bounds.right - display.bounds.left
         << ",\"height\":" << display.bounds.bottom - display.bounds.top
         << ",\"scaleFactor\":" << display.scaleFactor
-        << "}}}\n";
+        << "}}";
+    if (!requestId.empty()) {
+        std::cout << ",\"requestId\":\"" << jsonEscape(requestId) << "\"";
+    }
+    std::cout << "}\n";
 }
 
 }  // namespace
@@ -787,13 +818,22 @@ int main() {
             writeError("invalid_request");
             continue;
         }
+        if (request.operation == "unwatch") {
+            // Watch push is macOS-only for now; acknowledge so clients can fall back cleanly.
+            writeEvent("unwatched", request.requestId);
+            continue;
+        }
+        if (request.operation == "watch") {
+            writeError("unsupported_operation", request.requestId);
+            continue;
+        }
         if (request.operation != kOperation) {
-            writeError("unsupported_operation");
+            writeError("unsupported_operation", request.requestId);
             continue;
         }
         if (request.pid <= 0 ||
             request.pid > std::numeric_limits<DWORD>::max()) {
-            writeError("invalid_pid");
+            writeError("invalid_pid", request.requestId);
             continue;
         }
 
@@ -802,17 +842,17 @@ int main() {
                 static_cast<DWORD>(request.pid),
                 utf8ToWide(request.titleHint),
                 window)) {
-            writeError("window_not_found");
+            writeError("window_not_found", request.requestId);
             continue;
         }
 
         DisplayDetails display;
         if (!displayForWindow(window.bounds, display)) {
-            writeError("display_not_found");
+            writeError("display_not_found", request.requestId);
             continue;
         }
 
-        writeSuccess(window, display);
+        writeSuccess(window, display, request.requestId);
     }
 
     return 0;

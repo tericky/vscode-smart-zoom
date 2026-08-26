@@ -29,6 +29,7 @@ struct Request {
     std::string operation;
     std::int64_t pid = 0;
     std::string titleHint;
+    std::string requestId;
 };
 
 class RequestParser {
@@ -44,6 +45,7 @@ public:
         bool hasOperation = false;
         bool hasPid = false;
         bool hasTitleHint = false;
+        bool hasRequestId = false;
         skipWhitespace();
         if (consume('}')) {
             return false;
@@ -75,6 +77,11 @@ public:
                     return false;
                 }
                 hasTitleHint = true;
+            } else if (key == "requestId") {
+                if (hasRequestId || !parseString(request.requestId)) {
+                    return false;
+                }
+                hasRequestId = true;
             } else if (!skipValue(0)) {
                 return false;
             }
@@ -90,7 +97,13 @@ public:
         }
 
         skipWhitespace();
-        return position_ == input_.size() && hasOperation && hasPid;
+        if (position_ != input_.size() || !hasOperation) {
+            return false;
+        }
+        if (request.operation == "unwatch") {
+            return true;
+        }
+        return hasPid;
     }
 
 private:
@@ -427,8 +440,20 @@ std::string jsonEscape(std::string_view value) {
     return escaped;
 }
 
-void writeError(std::string_view error) {
-    std::cout << "{\"ok\":false,\"error\":\"" << jsonEscape(error) << "\"}\n";
+void writeError(std::string_view error, std::string_view requestId = {}) {
+    std::cout << "{\"ok\":false,\"error\":\"" << jsonEscape(error) << "\"";
+    if (!requestId.empty()) {
+        std::cout << ",\"requestId\":\"" << jsonEscape(requestId) << "\"";
+    }
+    std::cout << "}\n";
+}
+
+void writeEvent(std::string_view event, std::string_view requestId = {}) {
+    std::cout << "{\"ok\":true,\"event\":\"" << jsonEscape(event) << "\"";
+    if (!requestId.empty()) {
+        std::cout << ",\"requestId\":\"" << jsonEscape(requestId) << "\"";
+    }
+    std::cout << "}\n";
 }
 
 bool isWaylandSession() {
@@ -1013,7 +1038,8 @@ bool displayForWindow(
 
 void writeSuccess(
     const WindowCandidate& window,
-    const DisplayDetails& display) {
+    const DisplayDetails& display,
+    std::string_view requestId = {}) {
     std::cout
         << "{\"ok\":true,\"data\":{\"window\":{"
         << "\"x\":" << window.bounds.x
@@ -1028,7 +1054,11 @@ void writeSuccess(
         << ",\"width\":" << display.bounds.width
         << ",\"height\":" << display.bounds.height
         << ",\"scaleFactor\":" << display.scaleFactor
-        << "}}}\n";
+        << "}}";
+    if (!requestId.empty()) {
+        std::cout << ",\"requestId\":\"" << jsonEscape(requestId) << "\"";
+    }
+    std::cout << "}\n";
 }
 
 }  // namespace
@@ -1044,23 +1074,31 @@ int main() {
             writeError("invalid_request");
             continue;
         }
+        if (request.operation == "unwatch") {
+            writeEvent("unwatched", request.requestId);
+            continue;
+        }
+        if (request.operation == "watch") {
+            writeError("unsupported_operation", request.requestId);
+            continue;
+        }
         if (request.operation != kOperation) {
-            writeError("unsupported_operation");
+            writeError("unsupported_operation", request.requestId);
             continue;
         }
         if (request.pid <= 0 ||
             request.pid > std::numeric_limits<std::int32_t>::max()) {
-            writeError("invalid_pid");
+            writeError("invalid_pid", request.requestId);
             continue;
         }
         if (isWaylandSession()) {
-            writeError("wayland_unsupported");
+            writeError("wayland_unsupported", request.requestId);
             continue;
         }
 
         Display* display = XOpenDisplay(nullptr);
         if (display == nullptr) {
-            writeError("x11_unavailable");
+            writeError("x11_unavailable", request.requestId);
             continue;
         }
         const Window root = DefaultRootWindow(display);
@@ -1068,19 +1106,19 @@ int main() {
         WindowCandidate window;
         if (!findWindow(display, root, request.pid, request.titleHint, window)) {
             XCloseDisplay(display);
-            writeError("window_not_found");
+            writeError("window_not_found", request.requestId);
             continue;
         }
 
         DisplayDetails displayDetails;
         if (!displayForWindow(display, root, window.bounds, displayDetails)) {
             XCloseDisplay(display);
-            writeError("display_not_found");
+            writeError("display_not_found", request.requestId);
             continue;
         }
 
         XCloseDisplay(display);
-        writeSuccess(window, displayDetails);
+        writeSuccess(window, displayDetails, request.requestId);
     }
 
     return EXIT_SUCCESS;
