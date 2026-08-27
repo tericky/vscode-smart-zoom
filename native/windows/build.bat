@@ -1,9 +1,11 @@
 @echo off
 setlocal
 
+rem %~dp0 ends with a backslash; quoting that path as "dir\" breaks cmd parsing.
 set "SCRIPT_DIR=%~dp0"
-set "BUILD_DIR=%SCRIPT_DIR%build"
-set "PACKAGE_DIR=%SCRIPT_DIR%..\win32"
+set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+set "BUILD_DIR=%SCRIPT_DIR%\build"
+set "PACKAGE_DIR=%SCRIPT_DIR%\..\win32"
 set "ARCH=%~1"
 if "%ARCH%"=="" set "ARCH=x64"
 
