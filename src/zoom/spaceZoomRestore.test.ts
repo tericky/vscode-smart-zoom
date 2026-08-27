@@ -6,7 +6,8 @@ import {
   isCursorHost,
   noteStableHome,
   noteWindowAway,
-  noteWindowBack
+  noteWindowBack,
+  shouldSkipSpuriousAutoZoomZero
 } from './spaceZoomRestore';
 
 test('detects Cursor without matching Visual Studio Code', () => {
@@ -59,4 +60,34 @@ test('stable home allows the next Space trip to restore again', () => {
   const nextTrip = noteWindowBack(state);
 
   assert.equal(nextTrip.shouldRestore, true);
+});
+
+test('skips auto zoom 0 only while the window is away on a Space trip', () => {
+  assert.equal(
+    shouldSkipSpuriousAutoZoomZero({
+      source: 'auto',
+      nextZoom: 0,
+      lastAppliedZoom: 2,
+      spaceAway: true
+    }),
+    true
+  );
+  assert.equal(
+    shouldSkipSpuriousAutoZoomZero({
+      source: 'auto',
+      nextZoom: 0,
+      lastAppliedZoom: 2,
+      spaceAway: false
+    }),
+    false
+  );
+  assert.equal(
+    shouldSkipSpuriousAutoZoomZero({
+      source: 'manual',
+      nextZoom: 0,
+      lastAppliedZoom: 2,
+      spaceAway: true
+    }),
+    false
+  );
 });

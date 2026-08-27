@@ -17,7 +17,8 @@ import {
   createSpaceRestoreState,
   noteStableHome,
   noteWindowAway,
-  noteWindowBack
+  noteWindowBack,
+  shouldSkipSpuriousAutoZoomZero
 } from './zoom/spaceZoomRestore';
 
 let activeMonitor: WindowMonitor | undefined;
@@ -128,17 +129,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       context?: { source?: 'auto' | 'manual' | 'startup' }
     ): Promise<void> => {
       const nextZoom = clampZoomLevel(target);
-      // Space switches can make the helper resolve a display with no profile
-      // (zoom 0). Applying that overwrites the user's 120% and later Space
-      // restore then reapplies 0.
+      // Only suppress spurious zoom 0 while away on a Space trip. Moving onto an
+      // unconfigured display must still apply defaultZoom (often 0 / 100%).
       if (
-        context?.source === 'auto' &&
-        nextZoom === 0 &&
-        lastAppliedZoom !== undefined &&
-        lastAppliedZoom !== 0
+        shouldSkipSpuriousAutoZoomZero({
+          source: context?.source,
+          nextZoom,
+          lastAppliedZoom,
+          spaceAway: spaceRestore.away
+        })
       ) {
         logger.info(
-          `Skip applying zoom 0; keeping remembered zoom ${lastAppliedZoom}.`
+          `Skip applying zoom 0 during Space trip; keeping remembered zoom ${lastAppliedZoom}.`
         );
         return;
       }
@@ -146,9 +148,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await commandZoomApplier.applyZoomToCurrentWindow(target);
       const appliedZoom = commandZoomApplier.tracker.getLastApplication()?.appliedZoom
         ?? nextZoom;
-      if (!(context?.source === 'auto' && appliedZoom === 0 && lastAppliedZoom)) {
-        lastAppliedZoom = appliedZoom;
-      }
+      lastAppliedZoom = appliedZoom;
       if (display) {
         statusBar?.update({ display, zoom: appliedZoom });
       } else {

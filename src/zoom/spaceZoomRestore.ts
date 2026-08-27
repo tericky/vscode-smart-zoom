@@ -56,3 +56,23 @@ export function noteStableHome(state: SpaceRestoreState): SpaceRestoreState {
     restored: false
   };
 }
+
+/**
+ * During a Space swipe the helper can briefly resolve an unmatched display
+ * (zoom 0). Skip that only while the window is away. Normal moves onto an
+ * unconfigured display must still apply defaultZoom 0 / 100%.
+ */
+export function shouldSkipSpuriousAutoZoomZero(input: {
+  source?: 'auto' | 'manual' | 'startup';
+  nextZoom: number;
+  lastAppliedZoom?: number;
+  spaceAway: boolean;
+}): boolean {
+  return (
+    input.source === 'auto' &&
+    input.nextZoom === 0 &&
+    input.spaceAway &&
+    input.lastAppliedZoom !== undefined &&
+    input.lastAppliedZoom !== 0
+  );
+}
