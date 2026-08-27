@@ -3,9 +3,10 @@
   "displayName": "Smart Zoom",
   "description": "Automatically apply per-window zoom based on the current display",
   "version": "0.0.9",
-  "publisher": "tericky",
+  "publisher": "Tericky",
   "author": "Tericky <tericky@gmail.com>",
   "license": "Apache-2.0",
+  "icon": "icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/tericky/vscode-smart-zoom.git"
@@ -15,6 +16,13 @@
   },
   "categories": [
     "Other"
+  ],
+  "keywords": [
+    "zoom",
+    "smart",
+    "screen",
+    "monitor",
+    "display"
   ],
   "activationEvents": [
     "onStartupFinished"
