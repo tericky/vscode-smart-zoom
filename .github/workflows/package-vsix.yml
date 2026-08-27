@@ -2,6 +2,11 @@ name: Package VSIX
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish packaged VSIX files to VS Code Marketplace
+        type: boolean
+        default: true
   push:
     branches:
       - release
@@ -70,3 +75,50 @@ jobs:
           path: |
             *.vsix
           if-no-files-found: error
+
+  publish:
+    name: Marketplace
+    needs: package
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push'
+      || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    steps:
+      - name: Download VSIX artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: vscode-smart-zoom-*
+          merge-multiple: true
+          path: vsix
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Publish platform VSIX files
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VSCE_PAT:-}" ]; then
+            echo "Missing secret VSCE_PAT. Add an Azure DevOps Marketplace Manage PAT in repo Actions secrets."
+            exit 1
+          fi
+          shopt -s nullglob
+          files=(vsix/*.vsix)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No .vsix files found under vsix/"
+            ls -la vsix || true
+            exit 1
+          fi
+          echo "Publishing ${#files[@]} VSIX file(s):"
+          printf ' - %s\n' "${files[@]}"
+          for f in "${files[@]}"; do
+            echo "::group::Publish $(basename "$f")"
+            vsce publish --packagePath "$f"
+            echo "::endgroup::"
+          done
