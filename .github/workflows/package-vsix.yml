@@ -1,0 +1,82 @@
+name: Package VSIX
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+      - feature/multi-monitor-auto-zoom
+    paths:
+      - 'src/**'
+      - 'native/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/package-target.mjs'
+      - '.vscodeignore*'
+      - '.github/workflows/package-vsix.yml'
+
+jobs:
+  package:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: darwin-arm64
+            also_target: darwin-x64
+          - os: windows-latest
+            target: win32-x64
+          - os: ubuntu-latest
+            target: linux-x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Linux X11 build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config \
+            libx11-dev libxrandr-dev libxinerama-dev
+
+      - name: Build macOS helper
+        if: runner.os == 'macOS'
+        run: ./native/macos/build.sh
+
+      - name: Build Windows helper
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: native\windows\build.bat
+
+      - name: Build Linux helper
+        if: runner.os == 'Linux'
+        run: ./native/linux-x11/build.sh
+
+      - name: Package primary target
+        run: node scripts/package-target.mjs ${{ matrix.target }}
+
+      - name: Package extra Darwin target
+        if: ${{ matrix.also_target }}
+        run: node scripts/package-target.mjs ${{ matrix.also_target }}
+
+      - name: Upload VSIX artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-smart-zoom-${{ matrix.target }}
+          path: |
+            *.vsix
+          if-no-files-found: error

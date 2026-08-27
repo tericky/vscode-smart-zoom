@@ -18,13 +18,12 @@ package-lock.json
 **/*.test.js
 **/tsconfig.tsbuildinfo
 
-# Native sources (keep packaged binaries only)
+# Native sources (packaged binaries live under native/darwin|win32|linux)
 native/README.md
 native/macos/**
 native/windows/**
 native/linux-x11/**
 
-# Local default: package only the current host helper.
-# Prefer `npm run package:<target>` / CI for multi-platform releases.
-native/win32/**
+# Exclude helpers for other OS targets (win32 package)
+native/darwin/**
 native/linux/**
