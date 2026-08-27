@@ -3,6 +3,18 @@
 Languages: [English](./readme.md) | [繁體中文](doc/README.zh-TW.md) | [简体中文](doc/README.zh-CN.md) | [日本語](doc/README.ja.md)
 
 <p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=tericky.smart-zoom">
+    <img src="https://vsmarketplacebadges.dev/version-short/tericky.smart-zoom.svg" alt="Marketplace version" />
+  </a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=tericky.smart-zoom">
+    <img src="https://vsmarketplacebadges.dev/installs-short/tericky.smart-zoom.svg" alt="Marketplace installs" />
+  </a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=tericky.smart-zoom">
+    <img src="https://vsmarketplacebadges.dev/rating-short/tericky.smart-zoom.svg" alt="Marketplace rating" />
+  </a>
+</p>
+
+<p align="center">
   <img src="doc/images/icon.png" alt="Smart Zoom icon" width="220" />
 </p>
 
