@@ -2,7 +2,7 @@
   "name": "vscode-smart-zoom",
   "displayName": "Smart Zoom",
   "description": "Automatically apply per-window zoom based on the current display",
-  "version": "0.0.18",
+  "version": "1.0.0",
   "publisher": "tericky",
   "author": "Tericky <tericky@gmail.com>",
   "license": "Apache-2.0",
@@ -29,6 +29,7 @@
   ],
   "main": "./out/extension.js",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || exit 0",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node --test \"out/**/*.test.js\"",
@@ -37,7 +38,8 @@
     "package:darwin-x64": "node scripts/package-target.mjs darwin-x64",
     "package:win32-x64": "node scripts/package-target.mjs win32-x64",
     "package:linux-x64": "node scripts/package-target.mjs linux-x64",
-    "build:linux-helper:docker": "bash scripts/build-linux-helper-docker.sh"
+    "build:linux-helper:docker": "bash scripts/build-linux-helper-docker.sh",
+    "bump:version": "npm version patch -m '[publish]: version %s'"
   },
   "contributes": {
     "configuration": {
