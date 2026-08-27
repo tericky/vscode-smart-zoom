@@ -69,7 +69,7 @@ jobs:
         run: node scripts/package-target.mjs ${{ matrix.also_target }}
 
       - name: Upload VSIX artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: vscode-smart-zoom-${{ matrix.target }}
           path: |
@@ -85,7 +85,7 @@ jobs:
       || (github.event_name == 'workflow_dispatch' && inputs.publish)
     steps:
       - name: Download VSIX artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           pattern: vscode-smart-zoom-*
           merge-multiple: true
