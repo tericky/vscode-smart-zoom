@@ -2,8 +2,8 @@
   "name": "vscode-smart-zoom",
   "displayName": "Smart Zoom",
   "description": "Automatically apply per-window zoom based on the current display",
-  "version": "0.0.9",
-  "publisher": "Tericky",
+  "version": "0.0.11",
+  "publisher": "tericky",
   "author": "Tericky <tericky@gmail.com>",
   "license": "Apache-2.0",
   "icon": "icon.png",
@@ -40,29 +40,90 @@
       "properties": {
         "smartZoom.enabled": {
           "type": "boolean",
-          "default": true
+          "default": true,
+          "description": "Enable automatic per-display zoom.",
+          "scope": "window"
         },
         "smartZoom.pollInterval": {
           "type": "number",
           "default": 500,
           "minimum": 100,
-          "description": "How often (ms) to check which display the window is on. Higher values use less CPU."
+          "description": "How often (ms) to check which display the window is on when watch mode is unavailable. Higher values use less CPU.",
+          "scope": "window"
         },
         "smartZoom.stabilityChecks": {
           "type": "number",
-          "default": 2
+          "default": 2,
+          "minimum": 1,
+          "description": "Consecutive matching display observations required before applying zoom in poll mode.",
+          "scope": "window"
         },
         "smartZoom.defaultZoom": {
           "type": "number",
-          "default": 0
+          "default": 0,
+          "description": "Fallback zoom level when no display profile or resolution rule matches.",
+          "scope": "window"
         },
         "smartZoom.displayProfiles": {
           "type": "object",
-          "default": {}
+          "default": {},
+          "description": "Learned zoom profiles keyed by display id.",
+          "scope": "window",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "scaleFactor": {
+                "type": "number"
+              },
+              "zoom": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "scaleFactor",
+              "zoom"
+            ]
+          }
         },
         "smartZoom.zoomRules": {
           "type": "array",
-          "default": []
+          "default": [],
+          "description": "Learned zoom rules matched by resolution and scale factor.",
+          "scope": "window",
+          "items": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "scaleFactor": {
+                "type": "number"
+              },
+              "zoom": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "scaleFactor",
+              "zoom"
+            ]
+          }
         }
       }
     },
