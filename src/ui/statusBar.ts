@@ -13,11 +13,18 @@ export interface StatusBarOptions {
   onError: (error: unknown) => void | Promise<void>;
 }
 
+/** Delay tooltip rewrites so display/zoom updates do not pop the tip without hover. */
+const tooltipSettleDelayMs = 1000;
+
 export class SmartZoomStatusBar implements vscode.Disposable {
   private readonly item: vscode.StatusBarItem;
   private readonly getStatus: () => Promise<SmartZoomStatus>;
   private readonly onError: (error: unknown) => void | Promise<void>;
   private currentStatus: SmartZoomStatus | undefined;
+  private lastText: string | undefined;
+  private lastTooltip: string | undefined;
+  private pendingTooltip: string | undefined;
+  private tooltipTimer: NodeJS.Timeout | undefined;
 
   public constructor(options: StatusBarOptions) {
     this.getStatus = options.getStatus;
@@ -25,15 +32,16 @@ export class SmartZoomStatusBar implements vscode.Disposable {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     this.item.command = 'smartZoom.statusMenu';
     this.item.name = 'Smart Zoom';
-    this.item.tooltip = 'Smart Zoom — click to choose zoom size for this display';
-    this.item.text = '$(zoom-in) Smart Zoom —%';
+    this.lastTooltip = 'Smart Zoom — click to choose zoom for this display';
+    this.item.tooltip = this.lastTooltip;
+    this.setText('$(zoom-in) Smart Zoom —%');
     this.item.show();
   }
 
   public update(status: SmartZoomStatus): void {
     this.currentStatus = status;
-    this.item.text = formatStatusText(status);
-    this.item.tooltip = formatStatusTooltip(status);
+    this.setText(formatStatusText(status));
+    this.scheduleTooltip(formatStatusTooltip(status));
   }
 
   public updateZoom(zoom: number): void {
@@ -45,7 +53,31 @@ export class SmartZoomStatusBar implements vscode.Disposable {
       return;
     }
 
-    this.item.text = `$(zoom-in) Smart Zoom ${formatZoomPercent(zoom)}`;
+    this.setText(`$(zoom-in) Smart Zoom ${formatZoomPercent(zoom)}`);
+  }
+
+  private setText(text: string): void {
+    if (this.lastText === text) {
+      return;
+    }
+    this.lastText = text;
+    this.item.text = text;
+  }
+
+  private scheduleTooltip(tooltip: string): void {
+    this.pendingTooltip = tooltip;
+    if (this.tooltipTimer !== undefined) {
+      clearTimeout(this.tooltipTimer);
+    }
+    this.tooltipTimer = setTimeout(() => {
+      this.tooltipTimer = undefined;
+      const next = this.pendingTooltip;
+      if (next === undefined || next === this.lastTooltip) {
+        return;
+      }
+      this.lastTooltip = next;
+      this.item.tooltip = next;
+    }, tooltipSettleDelayMs);
   }
 
   public async refresh(): Promise<SmartZoomStatus> {
@@ -64,6 +96,10 @@ export class SmartZoomStatusBar implements vscode.Disposable {
   }
 
   public dispose(): void {
+    if (this.tooltipTimer !== undefined) {
+      clearTimeout(this.tooltipTimer);
+      this.tooltipTimer = undefined;
+    }
     this.item.dispose();
   }
 }
@@ -78,6 +114,15 @@ export function formatStatusMessage(status: SmartZoomStatus): string {
   ].join('\n');
 }
 
+export function formatStatusTooltip(status: SmartZoomStatus): string {
+  return [
+    formatStatusMessage(status),
+    '',
+    'Click to open the zoom menu.',
+    'The current size is marked with ✓ in the list.'
+  ].join('\n');
+}
+
 function formatStatusText(status: SmartZoomStatus): string {
   const displayLabel = shortDisplayName(status.display.name);
   const zoom = formatZoomPercent(status.zoom);
@@ -86,15 +131,6 @@ function formatStatusText(status: SmartZoomStatus): string {
   }
 
   return `$(zoom-in) Smart Zoom ${zoom}`;
-}
-
-function formatStatusTooltip(status: SmartZoomStatus): string {
-  return [
-    formatStatusMessage(status),
-    '',
-    'Click to open the zoom menu.',
-    'The current size is marked with ✓ in the list.'
-  ].join('\n');
 }
 
 function shortDisplayName(name: string | undefined): string | undefined {

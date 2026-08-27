@@ -2,7 +2,7 @@
   "name": "vscode-smart-zoom",
   "displayName": "Smart Zoom",
   "description": "Automatically apply per-window zoom based on the current display",
-  "version": "0.0.11",
+  "version": "0.0.18",
   "publisher": "tericky",
   "author": "Tericky <tericky@gmail.com>",
   "license": "Apache-2.0",
