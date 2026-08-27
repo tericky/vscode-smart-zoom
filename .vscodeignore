@@ -2,12 +2,10 @@
 .vscodeignore
 .superpowers/**
 docs/**
-spikes/**
 src/**
 **/*.ts
 tsconfig.json
 .gitignore
-TESTING.md
 package-lock.json
 
 **/*.map
