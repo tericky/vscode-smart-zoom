@@ -1,5 +1,5 @@
 {
-  "name": "vscode-smart-zoom",
+  "name": "smart-zoom",
   "displayName": "Smart Zoom",
   "description": "Automatically apply per-window zoom based on the current display",
   "version": "1.0.1",
