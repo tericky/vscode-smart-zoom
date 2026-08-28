@@ -12,3 +12,10 @@ export function formatDisplayZoomToast(input: {
 export function formatDisplayZoomToastDetail(display: DisplayIdentity): string {
   return `${display.width} × ${display.height} @ ${display.scaleFactor}x`;
 }
+
+export function shouldAnnounceDisplayZoom(input: {
+  source?: 'auto' | 'manual' | 'startup';
+  zoomChanged: boolean;
+}): boolean {
+  return input.source === 'auto' && input.zoomChanged;
+}

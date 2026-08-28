@@ -123,6 +123,11 @@ export class WindowMonitor {
   private applying = false;
   private pendingDetection: DetectorResult | undefined;
   private runId = 0;
+  /**
+   * After blur, the helper may briefly report a sibling window's display
+   * (shared app PID). Require extra confirmation before applying.
+   */
+  private settleAfterFocus = false;
 
   public constructor(options: WindowMonitorOptions) {
     this.helperClient = options.helperClient;
@@ -202,6 +207,7 @@ export class WindowMonitor {
     }
 
     if (this.isWindowFocused && !this.isWindowFocused()) {
+      this.settleAfterFocus = true;
       return;
     }
 
@@ -263,6 +269,7 @@ export class WindowMonitor {
   private async handleDetection(detection: DetectorResult): Promise<void> {
     if (this.isWindowFocused && !this.isWindowFocused()) {
       // Do not update stability from another window's geometry.
+      this.settleAfterFocus = true;
       this.pendingDetection = undefined;
       return;
     }
@@ -281,8 +288,20 @@ export class WindowMonitor {
 
     this.onHelperSuccess();
 
+    if (
+      this.settleAfterFocus &&
+      this.stabilityState.currentDisplayId === detection.display.id
+    ) {
+      this.settleAfterFocus = false;
+    }
+
     // Watch events already fire only when display id changes; skip multi-poll stability.
-    const stabilityChecks = this.mode === 'watch' ? 1 : config.stabilityChecks;
+    // After blur, require two matching samples so a sibling window is not applied.
+    const stabilityChecks = this.settleAfterFocus
+      ? Math.max(2, this.mode === 'watch' ? 2 : config.stabilityChecks ?? 2)
+      : this.mode === 'watch'
+        ? 1
+        : config.stabilityChecks;
     const decision = shouldApplyDisplayChange(
       this.stabilityState,
       detection.display.id,
@@ -293,6 +312,8 @@ export class WindowMonitor {
       this.stabilityState = decision.nextState;
       return;
     }
+
+    this.settleAfterFocus = false;
 
     this.applying = true;
     try {
