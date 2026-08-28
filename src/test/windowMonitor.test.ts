@@ -274,6 +274,103 @@ test('ignores detections while the window is unfocused', async () => {
   assert.deepEqual(zoomApplier.appliedZooms, []);
 });
 
+test('after blur, does not apply a single mismatched sibling display', async () => {
+  let focused = true;
+  const helper = new WatchCapableHelper();
+  const zoomApplier = new RecordingZoomApplier();
+  const monitor = new WindowMonitor({
+    helperClient: helper,
+    getConfig: () => ({
+      ...baseConfig,
+      displayProfiles: {
+        'display-a': {
+          width: 1920,
+          height: 1080,
+          scaleFactor: 1,
+          zoom: 0
+        },
+        'display-b': {
+          width: 2560,
+          height: 1440,
+          scaleFactor: 1,
+          zoom: 2
+        }
+      }
+    }),
+    resolveZoom: ({ config, display }) => config.displayProfiles[display.displayId ?? '']?.zoom ?? 0,
+    zoomApplier,
+    isWindowFocused: () => focused
+  });
+
+  monitor.seedCurrentDisplay('display-a');
+  monitor.start();
+  await helper.started;
+
+  focused = false;
+  helper.emit(createDetectorResult('display-b'));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(zoomApplier.appliedZooms, []);
+
+  focused = true;
+  helper.emit(createDetectorResult('display-b'));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(zoomApplier.appliedZooms, []);
+
+  helper.emit(createDetectorResult('display-a'));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(zoomApplier.appliedZooms, []);
+
+  monitor.stop();
+});
+
+test('after blur, applies once a new display is confirmed twice', async () => {
+  let focused = true;
+  const helper = new WatchCapableHelper();
+  const zoomApplier = new RecordingZoomApplier();
+  const monitor = new WindowMonitor({
+    helperClient: helper,
+    getConfig: () => ({
+      ...baseConfig,
+      displayProfiles: {
+        'display-a': {
+          width: 1920,
+          height: 1080,
+          scaleFactor: 1,
+          zoom: 0
+        },
+        'display-b': {
+          width: 2560,
+          height: 1440,
+          scaleFactor: 1,
+          zoom: 2
+        }
+      }
+    }),
+    resolveZoom: ({ config, display }) => config.displayProfiles[display.displayId ?? '']?.zoom ?? 0,
+    zoomApplier,
+    isWindowFocused: () => focused
+  });
+
+  monitor.seedCurrentDisplay('display-a');
+  monitor.start();
+  await helper.started;
+
+  focused = false;
+  helper.emit(createDetectorResult('display-b'));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  focused = true;
+  helper.emit(createDetectorResult('display-b'));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(zoomApplier.appliedZooms, []);
+
+  helper.emit(createDetectorResult('display-b'));
+  await waitFor(() => zoomApplier.appliedZooms.length === 1);
+  assert.deepEqual(zoomApplier.appliedZooms, [2]);
+
+  monitor.stop();
+});
+
 test('logs helper failure and keeps current zoom', async () => {
   const helper = new SequenceHelper([new Error('helper unavailable')]);
   const zoomApplier = new RecordingZoomApplier();

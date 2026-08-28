@@ -10,7 +10,11 @@ import { prepareHelperBinary } from './helper/prepareHelper';
 import { Logger } from './log/logger';
 import { WindowMonitor } from './monitor/windowMonitor';
 import { SmartZoomStatus, SmartZoomStatusBar } from './ui/statusBar';
-import { showDisplayZoomToast, disposeDisplayZoomToast } from './ui/zoomToast';
+import {
+  disposeDisplayZoomToast,
+  shouldAnnounceDisplayZoom,
+  showDisplayZoomToast
+} from './ui/zoomToast';
 import { CommandZoomApplier } from './zoom/zoomApplier';
 import { clampZoomLevel } from './zoom/zoomFormat';
 import {
@@ -145,6 +149,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
 
+      const previousZoom = commandZoomApplier.tracker.getLastApplication()?.appliedZoom;
       await commandZoomApplier.applyZoomToCurrentWindow(target);
       const appliedZoom = commandZoomApplier.tracker.getLastApplication()?.appliedZoom
         ?? nextZoom;
@@ -155,7 +160,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         statusBar?.updateZoom(appliedZoom);
       }
 
-      if (context?.source === 'auto' && display) {
+      if (
+        display &&
+        shouldAnnounceDisplayZoom({
+          source: context?.source,
+          zoomChanged: previousZoom !== appliedZoom
+        })
+      ) {
         void showDisplayZoomToast({ display, zoom: appliedZoom });
       }
     }

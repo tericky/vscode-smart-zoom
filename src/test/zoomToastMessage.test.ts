@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { formatDisplayZoomToast, formatDisplayZoomToastDetail } from '../ui/zoomToastMessage';
+import {
+  formatDisplayZoomToast,
+  formatDisplayZoomToastDetail,
+  shouldAnnounceDisplayZoom
+} from '../ui/zoomToastMessage';
 
 test('formats display-switch toast with zoom level and percent', () => {
   assert.equal(
@@ -28,4 +32,11 @@ test('formats resolution detail', () => {
     }),
     '5120 × 2880 @ 2x'
   );
+});
+
+test('announces auto zoom only when the applied zoom actually changed', () => {
+  assert.equal(shouldAnnounceDisplayZoom({ source: 'auto', zoomChanged: true }), true);
+  assert.equal(shouldAnnounceDisplayZoom({ source: 'auto', zoomChanged: false }), false);
+  assert.equal(shouldAnnounceDisplayZoom({ source: 'startup', zoomChanged: true }), false);
+  assert.equal(shouldAnnounceDisplayZoom({ source: 'manual', zoomChanged: true }), false);
 });

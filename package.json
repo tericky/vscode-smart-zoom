@@ -2,7 +2,7 @@
   "name": "smart-zoom",
   "displayName": "Smart Zoom Displays",
   "description": "Automatically apply per-window zoom based on the current display",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "publisher": "tericky",
   "author": "Tericky <tericky@gmail.com>",
   "license": "Apache-2.0",
